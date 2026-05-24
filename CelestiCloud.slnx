@@ -1,0 +1,6 @@
+<Solution>
+  <Folder Name="/src/">
+    <Project Path="src/CelestiCloud.CLI/CelestiCloud.CLI.csproj" />
+    <Project Path="src/CelestiCloud.Core/CelestiCloud.Core.csproj" />
+  </Folder>
+</Solution>
