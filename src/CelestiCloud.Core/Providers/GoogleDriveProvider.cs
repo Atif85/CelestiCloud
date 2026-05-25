@@ -2,7 +2,10 @@
 using Google.Apis.Auth.OAuth2;
 using Google.Apis.Drive.v3;
 using Google.Apis.Services;
+using Google.Apis.Upload;
 using Google.Apis.Util.Store;
+
+using DriveFile = Google.Apis.Drive.v3.Data.File;
 
 namespace CelestiCloud.Core.Providers;
 public class GoogleDriveProvider : ICloudProvider
@@ -26,7 +29,7 @@ public class GoogleDriveProvider : ICloudProvider
         _tokenDirectoryPath = tokenDirectoryPath;
     }
 
-    public async Task ConnectAsync()
+    public async Task ConnectAsync(CancellationToken cancellationToken = default)
     {
         if (!File.Exists(_credentialsFilePath))
         {
@@ -43,7 +46,7 @@ public class GoogleDriveProvider : ICloudProvider
                 GoogleClientSecrets.FromStream(stream).Secrets,
                 Scopes,
                 "user",
-                CancellationToken.None,
+                cancellationToken,
                 new FileDataStore(_tokenDirectoryPath, true));
         }
 
@@ -58,7 +61,66 @@ public class GoogleDriveProvider : ICloudProvider
     public async Task UploadFileAsync(string localPath, string remotePath, IProgress<double>? progress = null)
     {
         EnsureConnected();
-        throw new NotImplementedException();
+        
+        if (!File.Exists(localPath))
+            throw new FileNotFoundException($"Local file was not found");
+
+        // Split the remote path to get the parent folder path and the file name
+        string[] segments = remotePath.Split(['/', '\\'], StringSplitOptions.RemoveEmptyEntries);
+
+        string fileName = segments.Last();
+        string parentPath = string.Join("/", segments.Take(segments.Length - 1));
+
+        // Ensure the remote directory exists (creates it if it doesn't)
+        string parentFolderId = await ResolvePathToIdAsync(parentPath, createIfMissing: true)
+                                ?? throw new Exception("Failed to resolve or create remote parent folder.");
+
+        // Check if file already exists so we know whether to Create or Update
+        string? existingFileId = await ResolvePathToIdAsync(remotePath);
+
+        bool remoteFileExists = existingFileId != null;
+
+        var fileMetadata = new DriveFile
+        {
+            Name = fileName
+        };
+
+        await using var fileStream = new FileStream(localPath, FileMode.Open, FileAccess.Read);
+
+        ResumableUpload<DriveFile, DriveFile> uploadRequest;
+
+        if (remoteFileExists)
+        {
+            uploadRequest = _service!.Files.Update(fileMetadata, existingFileId, fileStream, GetMimeType(localPath));
+        }
+        else
+        {
+            fileMetadata.Parents = [parentFolderId];
+            uploadRequest = _service!.Files.Create(fileMetadata, fileStream, GetMimeType(localPath));
+        }
+
+        // Attach progress reporter if provided
+        if (progress != null)
+        {
+            long fileLength = fileStream.Length;
+            uploadRequest.ProgressChanged += uploadProgress =>
+            {
+                if (uploadProgress.Status == UploadStatus.Uploading)
+                {
+                    double percentage = (double)uploadProgress.BytesSent / fileLength;
+                    progress.Report(percentage);
+                }
+            };
+        }
+
+        var response = await uploadRequest.UploadAsync();
+
+        if (response.Status == UploadStatus.Failed)
+        {
+            throw new Exception($"Upload failed: {response.Exception?.Message}", response.Exception);
+        }
+
+        progress?.Report(1.0); // 100% complete
     }
 
     public async Task DownloadFileAsync(string remotePath, string localPath, IProgress<double>? progress = null)
@@ -136,7 +198,7 @@ public class GoogleDriveProvider : ICloudProvider
             else if (createIfMissing)
             {
                 // Create the missing folder
-                var folderMetadata = new Google.Apis.Drive.v3.Data.File
+                var folderMetadata = new DriveFile
                 {
                     Name = segment,
                     MimeType = FolderMimeType,
@@ -157,6 +219,23 @@ public class GoogleDriveProvider : ICloudProvider
 
         return currentParentId;
     }
+
+    private string GetMimeType(string fileName)
+    {
+        // Simple mapping. You can expand this or use a Mime mapping library later.
+        string ext = Path.GetExtension(fileName).ToLower();
+        return ext switch
+        {
+            ".txt" => "text/plain",
+            ".pdf" => "application/pdf",
+            ".jpg" or ".jpeg" => "image/jpeg",
+            ".png" => "image/png",
+            ".json" => "application/json",
+            ".zip" => "application/zip",
+            _ => "application/octet-stream" // Default binary
+        };
+    }
+
 
     private void EnsureConnected()
     {

@@ -6,7 +6,7 @@ public interface ICloudProvider
 {
     string ProviderName { get; }
 
-    Task ConnectAsync();
+    Task ConnectAsync(CancellationToken cancellationToken);
 
     Task UploadFileAsync(string localPath, string remotePath, IProgress<double>? progress = null);
 
