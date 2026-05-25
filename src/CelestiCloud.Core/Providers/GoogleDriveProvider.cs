@@ -126,13 +126,76 @@ public class GoogleDriveProvider : ICloudProvider
     public async Task DownloadFileAsync(string remotePath, string localPath, IProgress<double>? progress = null)
     {
         EnsureConnected();
-        throw new NotImplementedException();
+
+        string? remoteFileId = await ResolvePathToIdAsync(remotePath);
+        if (remoteFileId == null) 
+            throw new FileNotFoundException($"Remote file not found: {remotePath}");
+
+        string? localDir = Path.GetDirectoryName(localPath);
+
+        if (!string.IsNullOrEmpty(localDir) && !Directory.Exists(localDir))
+        {
+            Directory.CreateDirectory(localDir);
+        }
+
+        long fileSize = 0;
+        if (progress != null)
+        {
+            var metaRequest = _service!.Files.Get(remoteFileId);
+            metaRequest.Fields = "size";
+            var fileMeta = await metaRequest.ExecuteAsync();
+            fileSize = fileMeta.Size ?? 0;
+        }
+
+        var request = _service!.Files.Get(remoteFileId);
+
+        await using var fileStream = new FileStream(localPath, FileMode.Create, FileAccess.Write);
+
+        if (progress != null && fileSize > 0)
+        {
+            request.MediaDownloader.ProgressChanged += (Google.Apis.Download.IDownloadProgress downloadProgress) =>
+            {
+                if (downloadProgress.Status == Google.Apis.Download.DownloadStatus.Downloading)
+                {
+                    double percentage = (double)downloadProgress.BytesDownloaded / fileSize;
+                    progress.Report(Math.Min(percentage, 1.0)); // Cap at 1.0 just in case
+                }
+            };
+        }
+
+        var response = await request.DownloadAsync(fileStream);
+
+        if (response.Status == Google.Apis.Download.DownloadStatus.Failed)
+        {
+            throw new Exception($"Download failed: {response.Exception?.Message}", response.Exception);
+        }
+
+        progress?.Report(1.0); // 100% complete
     }
 
-    public async Task DeleteRemoteFileAsync(string remotePath)
+    public async Task DeleteRemoteFileAsync(string remotePath, bool moveToTrash = true)
     {
         EnsureConnected();
-        throw new NotImplementedException();
+
+        string? remoteFileId = await ResolvePathToIdAsync(remotePath);
+
+        if (remoteFileId == null)
+            return;
+
+        if (moveToTrash)
+        {
+            DriveFile fileMetadata = new()
+            {
+                Trashed = true
+            };
+            var request = _service!.Files.Update(fileMetadata, remoteFileId);
+            await request.ExecuteAsync();
+        }
+        else
+        {
+            var request = _service!.Files.Delete(remoteFileId);
+            await request.ExecuteAsync();
+        }
     }
 
     public async Task<IEnumerable<CloudFile>> ListFilesAsync(string remotePath)

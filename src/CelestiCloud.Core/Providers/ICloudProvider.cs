@@ -12,7 +12,7 @@ public interface ICloudProvider
 
     Task DownloadFileAsync(string remotePath, string localPath, IProgress<double>? progress = null);
 
-    Task DeleteRemoteFileAsync(string remotePath);
+    Task DeleteRemoteFileAsync(string remotePath, bool moveToTrash);
 
     Task<bool> FileExistsAsync(string remotePath);
 
