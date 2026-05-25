@@ -76,7 +76,31 @@ public class GoogleDriveProvider : ICloudProvider
     public async Task<IEnumerable<CloudFile>> ListFilesAsync(string remotePath)
     {
         EnsureConnected();
-        throw new NotImplementedException();
+
+        string? folderId = await ResolvePathToIdAsync(remotePath);
+        if (folderId == null) return [];
+
+        var request = _service!.Files.List();
+        request.Q = $"'{folderId}' in parents and trashed = false";
+
+        request.Fields = "files(id, name, mimeType, size, modifiedTime)";
+
+        var result = await request.ExecuteAsync();
+        var files = new List<CloudFile>();
+
+        foreach (var file in result.Files)
+        {
+            files.Add(new CloudFile
+            {
+                Id = file.Id,
+                Name = file.Name,
+                IsFolder = file.MimeType == FolderMimeType,
+                Size = file.Size,
+                ModifiedDate = file.ModifiedTimeDateTimeOffset?.DateTime
+            });
+        }
+
+        return files;
     }
 
     public async Task<bool> FileExistsAsync(string remotePath)

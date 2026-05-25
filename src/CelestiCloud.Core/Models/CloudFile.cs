@@ -11,4 +11,9 @@ public class CloudFile
     public bool IsFolder { get; init; }
     public long? Size { get; init; }
     public DateTime? ModifiedDate { get; init; }
+
+    public override string ToString()
+    {
+        return $"ID: {Id}, Name: {Name}, IsFolder: {IsFolder}, Size: {Size}";
+    }
 }

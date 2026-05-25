@@ -18,8 +18,17 @@ await provider.ConnectAsync();
 Console.WriteLine("Successfully authenticated!");
 Console.WriteLine($"Token saved to: {tokensFolder}");
 
-string remotePath = "My Folders/College/slides";
+string remotePath = "My Folders/College/";
 
 bool exists = await provider.FileExistsAsync(remotePath);
 
-Console.WriteLine(exists ? "Exists" : "Doesnt Exist");
+if (exists)
+{
+    Console.WriteLine("Exists");
+    var files = await provider.ListFilesAsync(remotePath);
+
+    foreach (var file in files)
+    {
+        Console.WriteLine(file);
+    }
+}
