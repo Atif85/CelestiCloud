@@ -2,5 +2,6 @@
   <Folder Name="/src/">
     <Project Path="src/CelestiCloud.CLI/CelestiCloud.CLI.csproj" />
     <Project Path="src/CelestiCloud.Core/CelestiCloud.Core.csproj" />
+    <Project Path="src/CelestiCloud.GUI/CelestiCloud.GUI.csproj" Id="79e61669-33a3-4783-a3a8-6b104e09dc16" />
   </Folder>
 </Solution>
