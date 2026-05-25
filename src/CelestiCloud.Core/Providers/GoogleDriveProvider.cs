@@ -58,13 +58,10 @@ public class GoogleDriveProvider : ICloudProvider
         });
     }
 
-    public async Task UploadFileAsync(string localPath, string remotePath, IProgress<double>? progress = null)
+    public async Task UploadFileAsync(Stream sourceStream, string remotePath, string contentType, IProgress<double>? progress = null)
     {
         EnsureConnected();
-        
-        if (!File.Exists(localPath))
-            throw new FileNotFoundException($"Local file was not found");
-
+      
         // Split the remote path to get the parent folder path and the file name
         string[] segments = remotePath.Split(['/', '\\'], StringSplitOptions.RemoveEmptyEntries);
 
@@ -85,24 +82,22 @@ public class GoogleDriveProvider : ICloudProvider
             Name = fileName
         };
 
-        await using var fileStream = new FileStream(localPath, FileMode.Open, FileAccess.Read);
-
         ResumableUpload<DriveFile, DriveFile> uploadRequest;
 
         if (remoteFileExists)
         {
-            uploadRequest = _service!.Files.Update(fileMetadata, existingFileId, fileStream, GetMimeType(localPath));
+            uploadRequest = _service!.Files.Update(fileMetadata, existingFileId, sourceStream, contentType);
         }
         else
         {
             fileMetadata.Parents = [parentFolderId];
-            uploadRequest = _service!.Files.Create(fileMetadata, fileStream, GetMimeType(localPath));
+            uploadRequest = _service!.Files.Create(fileMetadata, sourceStream, contentType);
         }
 
         // Attach progress reporter if provided
         if (progress != null)
         {
-            long fileLength = fileStream.Length;
+            long fileLength = sourceStream.CanSeek ? sourceStream.Length : 0;
             uploadRequest.ProgressChanged += uploadProgress =>
             {
                 if (uploadProgress.Status == UploadStatus.Uploading)
@@ -123,20 +118,13 @@ public class GoogleDriveProvider : ICloudProvider
         progress?.Report(1.0); // 100% complete
     }
 
-    public async Task DownloadFileAsync(string remotePath, string localPath, IProgress<double>? progress = null)
+    public async Task DownloadFileAsync(string remotePath, Stream destinationStream, IProgress<double>? progress = null)
     {
         EnsureConnected();
 
         string? remoteFileId = await ResolvePathToIdAsync(remotePath);
         if (remoteFileId == null) 
             throw new FileNotFoundException($"Remote file not found: {remotePath}");
-
-        string? localDir = Path.GetDirectoryName(localPath);
-
-        if (!string.IsNullOrEmpty(localDir) && !Directory.Exists(localDir))
-        {
-            Directory.CreateDirectory(localDir);
-        }
 
         long fileSize = 0;
         if (progress != null)
@@ -148,8 +136,6 @@ public class GoogleDriveProvider : ICloudProvider
         }
 
         var request = _service!.Files.Get(remoteFileId);
-
-        await using var fileStream = new FileStream(localPath, FileMode.Create, FileAccess.Write);
 
         if (progress != null && fileSize > 0)
         {
@@ -163,7 +149,7 @@ public class GoogleDriveProvider : ICloudProvider
             };
         }
 
-        var response = await request.DownloadAsync(fileStream);
+        var response = await request.DownloadAsync(destinationStream);
 
         if (response.Status == Google.Apis.Download.DownloadStatus.Failed)
         {
