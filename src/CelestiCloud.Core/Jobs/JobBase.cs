@@ -11,12 +11,15 @@ public abstract class JobBase
     public JobConfig Config { get; }
     public bool IsRunning { get; private set; }
 
+    protected readonly string AppDataPath;
+
     private readonly Lock _lock = new();
     private CancellationTokenSource? _cts;
 
-    protected JobBase(JobConfig config)
+    protected JobBase(JobConfig config, string appDataPath)
     {
         Config = config ?? throw new ArgumentNullException(nameof(config));
+        AppDataPath = appDataPath;
     }
 
     /// <summary>
@@ -29,6 +32,17 @@ public abstract class JobBase
             if (IsRunning) return;
             IsRunning = true;
             _cts = new CancellationTokenSource();
+        }
+
+        if (!JobLockManager.TryAcquireLock(Config.Id, AppDataPath, out string? errorMessage))
+        {
+            lock (_lock)
+            {
+                IsRunning = false;
+                _cts?.Dispose();
+                _cts = null;
+            }
+            throw new InvalidOperationException($"Cannot start job: {errorMessage}");
         }
 
         try
