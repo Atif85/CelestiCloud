@@ -7,6 +7,7 @@ public class ConfigManager
 {
     private readonly string _appDataPath;
     private readonly string _jobsDirectory;
+    private readonly string _accountsDirectory;
 
     private readonly JsonSerializerOptions _options;
 
@@ -15,9 +16,11 @@ public class ConfigManager
         string systemFolder = Environment.GetFolderPath(Environment.SpecialFolder.ApplicationData);
         _appDataPath = Path.Combine(systemFolder, "CelestiCloud");
         _jobsDirectory = Path.Combine(_appDataPath, "jobs");
+        _accountsDirectory = Path.Combine(_appDataPath, "accounts");
 
         // Ensure directories exist on startup
         Directory.CreateDirectory(_jobsDirectory);
+        Directory.CreateDirectory(_accountsDirectory);
 
         _options = new JsonSerializerOptions { WriteIndented = true };
     }
@@ -26,9 +29,8 @@ public class ConfigManager
 
     public string GetTokensDirectory() => Path.Combine(_appDataPath, "tokens");
 
-    /// <summary>
-    /// Saves a single JobConfig to disk.
-    /// </summary>
+    #region Jobs
+
     public void SaveJob(JobConfig job)
     {
         if (string.IsNullOrWhiteSpace(job.Id))
@@ -40,9 +42,6 @@ public class ConfigManager
         File.WriteAllText(filePath, json);
     }
 
-    /// <summary>
-    /// Loads a single JobConfig by ID. Returns null if not found.
-    /// </summary>
     public JobConfig? LoadJob(string jobId)
     {
         string filePath = Path.Combine(_jobsDirectory, $"{jobId}.json");
@@ -59,9 +58,12 @@ public class ConfigManager
         }
     }
 
-    /// <summary>
-    /// Loads all configured jobs from the AppData directory.
-    /// </summary>
+    public JobConfig? LoadJobByName(string jobName)
+    {
+        var allJobs = LoadAllJobs();
+        return allJobs.FirstOrDefault(j => j.Name.Equals(jobName, StringComparison.OrdinalIgnoreCase));
+    }
+
     public IEnumerable<JobConfig> LoadAllJobs()
     {
         var jobs = new List<JobConfig>();
@@ -91,9 +93,6 @@ public class ConfigManager
         return jobs;
     }
 
-    /// <summary>
-    /// Deletes a job configuration from disk.
-    /// </summary>
     public void DeleteJob(string jobId)
     {
         string filePath = Path.Combine(_jobsDirectory, $"{jobId}.json");
@@ -109,4 +108,82 @@ public class ConfigManager
             File.Delete(lockPath);
         }
     }
+
+    #endregion
+
+    #region Accounts
+
+    public void SaveAccount(AccountConfig account)
+    {
+        if (string.IsNullOrWhiteSpace(account.Id))
+            throw new ArgumentException("Account ID cannot be empty.", nameof(account));
+
+        string filePath = Path.Combine(_accountsDirectory, $"{account.Id}.json");
+        string json = JsonSerializer.Serialize(account, _options);
+
+        File.WriteAllText(filePath, json);
+    }
+
+    public AccountConfig? LoadAccount(string accountId)
+    {
+        string filePath = Path.Combine(_accountsDirectory, $"{accountId}.json");
+        if (!File.Exists(filePath)) return null;
+
+        try
+        {
+            string json = File.ReadAllText(filePath);
+            return JsonSerializer.Deserialize<AccountConfig>(json);
+        }
+        catch
+        {
+            return null;
+        }
+    }
+
+    public AccountConfig? LoadAccountByName(string displayName)
+    {
+        var allAccounts = LoadAllAccounts();
+        return allAccounts.FirstOrDefault(a => a.DisplayName.Equals(displayName, StringComparison.OrdinalIgnoreCase));
+    }
+
+    public IEnumerable<AccountConfig> LoadAllAccounts()
+    {
+        var accounts = new List<AccountConfig>();
+        if (!Directory.Exists(_accountsDirectory)) return accounts;
+
+        string[] files = Directory.GetFiles(_accountsDirectory, "*.json");
+        foreach (string file in files)
+        {
+            try
+            {
+                string json = File.ReadAllText(file);
+                var account = JsonSerializer.Deserialize<AccountConfig>(json);
+                if (account != null)
+                {
+                    accounts.Add(account);
+                }
+            }
+            catch { /* skip corrupted configs */ }
+        }
+
+        return accounts;
+    }
+
+    public void DeleteAccount(string accountId)
+    {
+        string filePath = Path.Combine(_accountsDirectory, $"{accountId}.json");
+        if (File.Exists(filePath))
+        {
+            File.Delete(filePath);
+        }
+
+        // Also clean up associated OAuth token directories
+        string tokenPath = Path.Combine(GetTokensDirectory(), accountId);
+        if (Directory.Exists(tokenPath))
+        {
+            Directory.Delete(tokenPath, recursive: true);
+        }
+    }
+
+    #endregion
 }
