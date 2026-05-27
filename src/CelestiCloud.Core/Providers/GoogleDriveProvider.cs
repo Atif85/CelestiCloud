@@ -60,6 +60,16 @@ public class GoogleDriveProvider : ICloudProvider
         });
     }
 
+    public async Task RevokeAccessAsync(CancellationToken cancellationToken = default)
+    {
+        EnsureConnected();
+
+        if (_service?.HttpClientInitializer is UserCredential credential)
+        {
+            await credential.RevokeTokenAsync(cancellationToken);
+        }
+    }
+
     public async Task<string> GetAuthenticatedUserEmailAsync(CancellationToken cancellationToken = default)
     {
         EnsureConnected();

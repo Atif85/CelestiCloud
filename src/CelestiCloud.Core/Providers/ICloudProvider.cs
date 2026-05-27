@@ -8,6 +8,8 @@ public interface ICloudProvider
 
     Task ConnectAsync(CancellationToken cancellationToken = default);
 
+    Task RevokeAccessAsync(CancellationToken cancellationToken = default);
+
     Task<string> GetAuthenticatedUserEmailAsync(CancellationToken cancellationToken = default);
 
     Task UploadFileAsync(Stream sourceStream, string remotePath, IProgress<double>? progress = null, CancellationToken cancellationToken = default);
