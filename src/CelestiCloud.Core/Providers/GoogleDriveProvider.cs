@@ -4,7 +4,7 @@ using Google.Apis.Drive.v3;
 using Google.Apis.Services;
 using Google.Apis.Upload;
 using Google.Apis.Util.Store;
-
+using System.Collections.Concurrent;
 using DriveFile = Google.Apis.Drive.v3.Data.File;
 
 namespace CelestiCloud.Core.Providers;
@@ -16,6 +16,9 @@ public class GoogleDriveProvider : ICloudProvider
     private readonly string _tokenDirectoryPath;
 
     private DriveService? _service;
+
+    private readonly ConcurrentDictionary<string, string> _folderCache = new();
+    private readonly SemaphoreSlim _folderLock = new(1, 1);
 
     private const string FolderMimeType = "application/vnd.google-apps.folder";
     private static readonly string[] Scopes = 
@@ -33,8 +36,7 @@ public class GoogleDriveProvider : ICloudProvider
     {
         if (!File.Exists(_credentialsFilePath))
         {
-            throw new FileNotFoundException(
-                $"credentials.json not found at {_credentialsFilePath}");
+            throw new FileNotFoundException($"credentials.json not found at {_credentialsFilePath}");
         }
 
         UserCredential credential;
@@ -58,7 +60,7 @@ public class GoogleDriveProvider : ICloudProvider
         });
     }
 
-    public async Task UploadFileAsync(Stream sourceStream, string remotePath, IProgress<double>? progress = null)
+    public async Task UploadFileAsync(Stream sourceStream, string remotePath, IProgress<double>? progress = null, CancellationToken cancellationToken = default)
     {
         EnsureConnected();
       
@@ -77,11 +79,7 @@ public class GoogleDriveProvider : ICloudProvider
 
         bool remoteFileExists = existingFileId != null;
 
-        var fileMetadata = new DriveFile
-        {
-            Name = fileName
-        };
-
+        var fileMetadata = new DriveFile { Name = fileName };
         string mimeType = GetMimeType(remotePath);
 
         ResumableUpload<DriveFile, DriveFile> uploadRequest;
@@ -96,6 +94,8 @@ public class GoogleDriveProvider : ICloudProvider
             uploadRequest = _service!.Files.Create(fileMetadata, sourceStream, mimeType);
         }
 
+        uploadRequest.ChunkSize = ResumableUpload.MinimumChunkSize * 2;
+
         // Attach progress reporter if provided
         if (progress != null)
         {
@@ -104,13 +104,13 @@ public class GoogleDriveProvider : ICloudProvider
             {
                 if (uploadProgress.Status == UploadStatus.Uploading)
                 {
-                    double percentage = (double)uploadProgress.BytesSent / fileLength;
+                    double percentage = uploadProgress.BytesSent / ((double)fileLength);
                     progress.Report(percentage);
                 }
             };
         }
 
-        var response = await uploadRequest.UploadAsync();
+        var response = await uploadRequest.UploadAsync(cancellationToken);
 
         if (response.Status == UploadStatus.Failed)
         {
@@ -124,7 +124,8 @@ public class GoogleDriveProvider : ICloudProvider
     {
         EnsureConnected();
 
-        string? fileId = await ResolvePathToIdAsync(oldRemotePath) ?? throw new FileNotFoundException($"Cannot rename, remote file not found: {oldRemotePath}");
+        string? fileId = await ResolvePathToIdAsync(oldRemotePath) 
+            ?? throw new FileNotFoundException($"Cannot rename, remote file not found: {oldRemotePath}");
 
         string newName = Path.GetFileName(newRemotePath);
         string oldParentPath = Path.GetDirectoryName(oldRemotePath)?.Replace('\\', '/') ?? "/";
@@ -149,7 +150,7 @@ public class GoogleDriveProvider : ICloudProvider
     }
 
 
-    public async Task DownloadFileAsync(string remotePath, Stream destinationStream, IProgress<double>? progress = null)
+    public async Task DownloadFileAsync(string remotePath, Stream destinationStream, IProgress<double>? progress = null, CancellationToken cancellationToken = default)
     {
         EnsureConnected();
 
@@ -180,7 +181,7 @@ public class GoogleDriveProvider : ICloudProvider
             };
         }
 
-        var response = await request.DownloadAsync(destinationStream);
+        var response = await request.DownloadAsync(destinationStream, cancellationToken);
 
         if (response.Status == Google.Apis.Download.DownloadStatus.Failed)
         {
@@ -196,15 +197,11 @@ public class GoogleDriveProvider : ICloudProvider
 
         string? remoteFileId = await ResolvePathToIdAsync(remotePath);
 
-        if (remoteFileId == null)
-            return;
+        if (remoteFileId == null) return;
 
         if (moveToTrash)
         {
-            DriveFile fileMetadata = new()
-            {
-                Trashed = true
-            };
+            DriveFile fileMetadata = new() { Trashed = true };
             var request = _service!.Files.Update(fileMetadata, remoteFileId);
             await request.ExecuteAsync();
         }
@@ -224,7 +221,6 @@ public class GoogleDriveProvider : ICloudProvider
 
         var request = _service!.Files.List();
         request.Q = $"'{folderId}' in parents and trashed = false";
-
         request.Fields = "files(id, name, mimeType, size, modifiedTime)";
 
         var result = await request.ExecuteAsync();
@@ -256,44 +252,83 @@ public class GoogleDriveProvider : ICloudProvider
     private async Task<string?> ResolvePathToIdAsync(string remotePath, bool createIfMissing = false)
     {
         string[] segments = remotePath.Split(['/', '\\'], StringSplitOptions.RemoveEmptyEntries);
+        if (segments.Length == 0) return "root";
+
         string currentParentId = "root";
+        string currentPath = "";
 
-        foreach (string segment in segments)
+        for (int i = 0; i < segments.Length; i++)
         {
-            var request = _service!.Files.List();
+            string segment = segments[i];
+            currentPath = string.IsNullOrEmpty(currentPath) ? segment : $"{currentPath}/{segment}";
 
-            string safeSegment = segment.Replace("'", "\\'");
+            // Identify if this is the very last part of the path (which might be a file)
+            bool isLastSegment = (i == segments.Length - 1);
 
-            request.Q = $"name = '{safeSegment}' and '{currentParentId}' in parents and trashed = false";
-            request.Fields = "files(id, mimeType)";
+            // We only want to read from the cache if we know it's a folder. 
+            // If createIfMissing is true, it's definitely a folder. Otherwise, we shouldn't cache the last segment.
+            bool canUseCache = !isLastSegment || createIfMissing;
 
-            var result = await request.ExecuteAsync();
-
-            var file = result.Files.FirstOrDefault();
-
-            if (file != null)
+            if (canUseCache && _folderCache.TryGetValue(currentPath, out string? cachedId))
             {
-                currentParentId = file.Id;
+                currentParentId = cachedId;
+                continue;
             }
-            else if (createIfMissing)
+
+            // Slow path: Lock to prevent duplicate creations
+            await _folderLock.WaitAsync();
+            try
             {
-                // Create the missing folder
-                var folderMetadata = new DriveFile
+                // Double-check cache inside the lock in case another thread just created it!
+                if (canUseCache && _folderCache.TryGetValue(currentPath, out cachedId))
                 {
-                    Name = segment,
-                    MimeType = FolderMimeType,
-                    Parents = [currentParentId]
-                };
+                    currentParentId = cachedId;
+                    continue;
+                }
 
-                var createRequest = _service.Files.Create(folderMetadata);
-                createRequest.Fields = "id";
-                var newFolder = await createRequest.ExecuteAsync();
-                currentParentId = newFolder.Id;
+                var request = _service!.Files.List();
+                string safeSegment = segment.Replace("'", "\\'");
+                request.Q = $"name = '{safeSegment}' and '{currentParentId}' in parents and trashed = false";
+                request.Fields = "files(id, mimeType)";
+
+                var result = await request.ExecuteAsync();
+                var file = result.Files.FirstOrDefault();
+
+                if (file != null)
+                {
+                    currentParentId = file.Id;
+
+                    // Only cache it if it's explicitly a folder
+                    if (canUseCache || file.MimeType == FolderMimeType)
+                    {
+                        _folderCache[currentPath] = currentParentId;
+                    }
+                }
+                else if (createIfMissing)
+                {
+                    // Safe to create now because we are inside the Semaphore lock
+                    var folderMetadata = new DriveFile
+                    {
+                        Name = segment,
+                        MimeType = FolderMimeType,
+                        Parents = [currentParentId]
+                    };
+
+                    var createRequest = _service.Files.Create(folderMetadata);
+                    createRequest.Fields = "id";
+                    var newFolder = await createRequest.ExecuteAsync();
+
+                    currentParentId = newFolder.Id;
+                    _folderCache[currentPath] = currentParentId;
+                }
+                else
+                {
+                    return null;
+                }
             }
-            else
+            finally
             {
-                // Path segment not found, and we aren't creating it
-                return null;
+                _folderLock.Release();
             }
         }
 
