@@ -60,6 +60,17 @@ public class GoogleDriveProvider : ICloudProvider
         });
     }
 
+    public async Task<string> GetAuthenticatedUserEmailAsync(CancellationToken cancellationToken = default)
+    {
+        EnsureConnected();
+
+        var request = _service!.About.Get();
+        request.Fields = "user(emailAddress)";
+
+        var about = await request.ExecuteAsync(cancellationToken);
+        return about.User?.EmailAddress ?? "unknown-email";
+    }
+
     public async Task UploadFileAsync(Stream sourceStream, string remotePath, IProgress<double>? progress = null, CancellationToken cancellationToken = default)
     {
         EnsureConnected();
