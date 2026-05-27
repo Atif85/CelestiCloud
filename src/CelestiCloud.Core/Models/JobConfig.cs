@@ -20,6 +20,7 @@ public class JobConfig
     public List<string> LocalPaths { get; set; } = [];
     public List<string> IgnorePatterns { get; set; } = [];
     public bool AutoStart { get; set; } = false;
+    public int MaxConcurrentTransfers { get; set; } = 4;
 
     public override string ToString()
     {

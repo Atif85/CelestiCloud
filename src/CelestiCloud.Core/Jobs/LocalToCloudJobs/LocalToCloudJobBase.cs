@@ -1,5 +1,6 @@
 ﻿using CelestiCloud.Core.Filtering;
 using CelestiCloud.Core.IO;
+using CelestiCloud.Core.Logging;
 using CelestiCloud.Core.Models;
 using CelestiCloud.Core.Providers;
 using System.Threading.Channels;
@@ -8,7 +9,10 @@ namespace CelestiCloud.Core.Jobs;
 
 public abstract class LocalToCloudJobBase : JobBase
 {
+    public SyncState State { get; } = new();
+
     protected readonly ICloudProvider Provider;
+    protected readonly IJobLogger Logger;
     protected abstract bool AllowDeletions { get; }
 
     private readonly IgnoreFilter _ignoreFilter;
@@ -16,10 +20,14 @@ public abstract class LocalToCloudJobBase : JobBase
     private readonly List<FileSystemWatcher> _watchers = [];
     private Channel<FileEvent>? _eventChannel;
 
-    protected LocalToCloudJobBase(JobConfig config, ICloudProvider provider, string appDataPath)
+    private int _filesFound;
+    private int _filesProcessed;
+
+    protected LocalToCloudJobBase(JobConfig config, ICloudProvider provider, string appDataPath, IJobLogger logger)
         : base(config, appDataPath)
     {
         Provider = provider ?? throw new ArgumentNullException(nameof(provider));
+        Logger = logger;
         _ignoreFilter = new(config.IgnorePatterns);
     }
 
@@ -29,26 +37,38 @@ public abstract class LocalToCloudJobBase : JobBase
     /// </summary>
     protected override async Task ExecuteAsync(CancellationToken cancellationToken)
     {
+        Logger.Log(LogLevel.Info, $"Starting job '{Config.Name}'...");
+
         // Set up our threadsafe event queue
         _eventChannel = Channel.CreateUnbounded<FileEvent>(new UnboundedChannelOptions
         {
-            SingleReader = true,  // We only consume with one background loop
-            SingleWriter = false  // Multiple watchers can write simultaneously
+            SingleReader = false, 
+            SingleWriter = false
         });
-
-        // Perform the initial full reconciliation pass (Size + ModTime checks)
-        await ReconcileAndUploadAsync(cancellationToken);
-
-        if (AllowDeletions)
-        {
-            await CleanupOrphanedRemoteFilesAsync(cancellationToken);
-        }
 
         // Initialize FileSystemWatchers for all configured local directories
         InitializeWatchers();
+        Logger.Log(LogLevel.Info, "Listening for real-time file changes...");
 
-        // Start the background loop to process real-time filesystem events
-        var consumerTask = ProcessEventChannelAsync(cancellationToken);
+        // Start the background loop to process realtime filesystem events
+        var workerTasks = new List<Task>();
+        for (int i = 0; i < Config.MaxConcurrentTransfers; i++)
+        {
+            workerTasks.Add(ProcessEventChannelWorkerAsync(i, cancellationToken));
+        }
+
+        // Perform the initial full reconciliation pass (Size + ModTime checks)
+        var initialScanTask = Task.Run(async () =>
+        {
+            Logger.Log(LogLevel.Debug, "Starting initial file reconciliation pass...");
+            await ReconcileAndUploadAsync(cancellationToken);
+
+            if (AllowDeletions)
+            {
+                await CleanupOrphanedRemoteFilesAsync(cancellationToken);
+            }
+            Logger.Log(LogLevel.Debug, "Initial pass complete.");
+        }, cancellationToken);
 
         try
         {
@@ -57,7 +77,7 @@ public abstract class LocalToCloudJobBase : JobBase
         }
         catch (OperationCanceledException)
         {
-            // Normal shutdown
+            Logger.Log(LogLevel.Info, "Job cancellation requested. Shutting down...");
         }
         finally
         {
@@ -65,8 +85,9 @@ public abstract class LocalToCloudJobBase : JobBase
             DisposeWatchers();
             _eventChannel.Writer.Complete();
 
-            // Wait for the consumer task to finish processing any pending events gracefully
-            await consumerTask;
+            await Task.WhenAll(workerTasks);
+            await initialScanTask;
+            Logger.Log(LogLevel.Debug, "Job shut down cleanly.");
         }
     }
 
@@ -84,16 +105,29 @@ public abstract class LocalToCloudJobBase : JobBase
             // Gather all local files in the directory recursively
             string[] localFiles = Directory.GetFiles(localDir, "*", SearchOption.AllDirectories);
 
-            foreach (string localFilePath in localFiles)
+            var eligibleFiles = localFiles
+                .Where(f => !_ignoreFilter.ShouldIgnore(localDir, f))
+                .ToList();
+
+            Interlocked.Add(ref _filesFound, eligibleFiles.Count);
+            State.FilesFound = _filesFound;
+
+            Logger.Log(LogLevel.Debug, $"Found {eligibleFiles.Count} eligible files in {localDir}. Checking remote state...");
+
+            var parallelOptions = new ParallelOptions
             {
-                cancellationToken.ThrowIfCancellationRequested();
+                MaxDegreeOfParallelism = Config.MaxConcurrentTransfers,
+                CancellationToken = cancellationToken
+            };
 
-                if (_ignoreFilter.ShouldIgnore(localDir, localFilePath))
-                    continue;
-
+            await Parallel.ForEachAsync(eligibleFiles, parallelOptions, async (localFilePath, ct) =>
+            {
                 string remoteFilePath = GetRemotePath(localFilePath, localDir);
-                await ReconcileFileAsync(localFilePath, remoteFilePath, cancellationToken);
-            }
+                await ReconcileFileAsync(localFilePath, remoteFilePath, ct);
+
+                Interlocked.Increment(ref _filesProcessed);
+                State.FilesProcessed = _filesProcessed;
+            });
         }
     }
 
@@ -120,6 +154,7 @@ public abstract class LocalToCloudJobBase : JobBase
 
         if (!remoteExists)
         {
+            Logger.Log(LogLevel.Info, $"[Upload] New file: {localInfo.Name}");
             await UploadFileWithThrottlingAsync(localPath, remotePath, cancellationToken);
             return;
         }
@@ -148,7 +183,12 @@ public abstract class LocalToCloudJobBase : JobBase
 
             if (sizeChanged || isLocalNewer)
             {
+                Logger.Log(LogLevel.Info, $"[Update] Modified file: {localInfo.Name}");
                 await UploadFileWithThrottlingAsync(localPath, remotePath, cancellationToken);
+            }
+            else
+            {
+                Logger.Log(LogLevel.Debug, $"[Skip] File unchanged: {localInfo.Name}");
             }
         }
     }
@@ -232,9 +272,11 @@ public abstract class LocalToCloudJobBase : JobBase
     /// <summary>
     /// Processes queued file events sequentially.
     /// </summary>
-    private async Task ProcessEventChannelAsync(CancellationToken cancellationToken)
+    private async Task ProcessEventChannelWorkerAsync(int workerId, CancellationToken cancellationToken)
     {
         if (_eventChannel == null) return;
+
+        Logger.Log(LogLevel.Debug, $"Started Event Worker #{workerId}");
 
         await foreach (var fileEvent in _eventChannel.Reader.ReadAllAsync(CancellationToken.None))
         {
@@ -250,12 +292,13 @@ public abstract class LocalToCloudJobBase : JobBase
                     if (!_ignoreFilter.ShouldIgnore(fileEvent.LocalRootPath, fileEvent.NewLocalPath))
                     {
                         string oldRemotePath = GetRemotePath(fileEvent.OldLocalPath, fileEvent.LocalRootPath);
+                        Logger.Log(LogLevel.Info, $"[Rename] {Path.GetFileName(fileEvent.OldLocalPath)} -> {Path.GetFileName(fileEvent.NewLocalPath)}");
                         await Provider.RenameRemoteFileAsync(oldRemotePath, remotePath);
                     }
                 }
                 else if (fileEvent.Type == FileEventType.CreatedOrChanged)
                 {
-                    // Basic file stabilization/debounce wait (gives applications like MS Office time to finish saving)
+                    // Basic file stabilization/debounce wait (gives applications time to finish saving)
                     await Task.Delay(2000, cancellationToken);
 
                     if (File.Exists(fileEvent.NewLocalPath))
@@ -267,14 +310,14 @@ public abstract class LocalToCloudJobBase : JobBase
                 {
                     if (AllowDeletions)
                     {
+                        Logger.Log(LogLevel.Info, $"[Delete] Remote file: {Path.GetFileName(remotePath)}");
                         await Provider.DeleteRemoteFileAsync(remotePath, moveToTrash: true);
                     }
                 }
             }
-            catch (Exception)
+            catch (Exception ex)
             {
-                // In a production app, we would log individual file errors to a status reporter
-                // and keep the thread running rather than letting it crash the job.
+                Logger.Log(LogLevel.Error, $"Error processing event for {fileEvent.NewLocalPath}: {ex.Message}");
             }
         }
     }
@@ -299,25 +342,52 @@ public abstract class LocalToCloudJobBase : JobBase
         const int maxRetries = 3;
         int retryDelayMs = 1000;
 
-        for (int i = 0; i < maxRetries; i++)
+        State.ActiveTransfers[localPath] = 0.0;
+
+        int isCompleted = 0;
+
+        var progressReporter = new Progress<double>(percent =>
         {
-            try
+            if (Volatile.Read(ref isCompleted) == 0)
             {
-                await using var rawFileStream = new FileStream(localPath, FileMode.Open, FileAccess.Read, FileShare.Read);
-
-                // Wrap in ThrottledStream. For now, limiter is null (unthrottled).
-                // When we add global limits, we will grab the shared rate limiter.
-                await using var throttledStream = new ThrottledStream(rawFileStream, limiter: null);
-
-                await Provider.UploadFileAsync(throttledStream, remotePath);
-                return;
+                State.ActiveTransfers[localPath] = percent;
             }
-            catch (IOException) when (i < maxRetries - 1)
+        });
+        try
+        {
+            for (int i = 0; i < maxRetries; i++)
             {
-                // File is currently locked; wait a second and retry
-                await Task.Delay(retryDelayMs, cancellationToken);
+                try
+                {
+                    await using var rawFileStream = new FileStream(localPath, FileMode.Open, FileAccess.Read, FileShare.Read);
+
+                    // TODO For now, limiter is null (unthrottled).
+                    await using var throttledStream = new ThrottledStream(rawFileStream, limiter: null);
+
+                    await Provider.UploadFileAsync(throttledStream, remotePath, progressReporter, cancellationToken);
+                    return;
+                }
+                catch (IOException) when (i < maxRetries - 1)
+                {
+                    // File is currently locked; wait a second and retry
+                    await Task.Delay(retryDelayMs, cancellationToken);
+                }
             }
         }
+        finally
+        {
+            Volatile.Write(ref isCompleted, 1);
+
+            if (!State.ActiveTransfers.TryRemove(localPath, out _))
+            {
+                Logger.Log(LogLevel.Error, $"ActiveTransefers.TryRemove failed for {localPath}");
+            }
+            else
+            {
+                Logger.Log(LogLevel.Debug, $"ActiveTransefers.TryRemove worked for {localPath}");
+            }
+        }
+
     }
 
     private string GetRemotePath(string localPath, string localRootPath)
