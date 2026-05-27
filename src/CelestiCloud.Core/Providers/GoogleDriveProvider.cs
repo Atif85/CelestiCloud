@@ -58,7 +58,7 @@ public class GoogleDriveProvider : ICloudProvider
         });
     }
 
-    public async Task UploadFileAsync(Stream sourceStream, string remotePath, string contentType, IProgress<double>? progress = null)
+    public async Task UploadFileAsync(Stream sourceStream, string remotePath, IProgress<double>? progress = null)
     {
         EnsureConnected();
       
@@ -82,16 +82,18 @@ public class GoogleDriveProvider : ICloudProvider
             Name = fileName
         };
 
+        string mimeType = GetMimeType(remotePath);
+
         ResumableUpload<DriveFile, DriveFile> uploadRequest;
 
         if (remoteFileExists)
         {
-            uploadRequest = _service!.Files.Update(fileMetadata, existingFileId, sourceStream, contentType);
+            uploadRequest = _service!.Files.Update(fileMetadata, existingFileId, sourceStream, mimeType);
         }
         else
         {
             fileMetadata.Parents = [parentFolderId];
-            uploadRequest = _service!.Files.Create(fileMetadata, sourceStream, contentType);
+            uploadRequest = _service!.Files.Create(fileMetadata, sourceStream, mimeType);
         }
 
         // Attach progress reporter if provided
@@ -117,6 +119,35 @@ public class GoogleDriveProvider : ICloudProvider
 
         progress?.Report(1.0); // 100% complete
     }
+
+    public async Task RenameRemoteFileAsync(string oldRemotePath, string newRemotePath)
+    {
+        EnsureConnected();
+
+        string? fileId = await ResolvePathToIdAsync(oldRemotePath) ?? throw new FileNotFoundException($"Cannot rename, remote file not found: {oldRemotePath}");
+
+        string newName = Path.GetFileName(newRemotePath);
+        string oldParentPath = Path.GetDirectoryName(oldRemotePath)?.Replace('\\', '/') ?? "/";
+        string newParentPath = Path.GetDirectoryName(newRemotePath)?.Replace('\\', '/') ?? "/";
+
+        var updateRequest = _service!.Files.Update(new DriveFile { Name = newName }, fileId);
+
+        // If the file was moved to a different folder, we update the parents
+        if (oldParentPath != newParentPath)
+        {
+            string? oldParentId = await ResolvePathToIdAsync(oldParentPath);
+            string? newParentId = await ResolvePathToIdAsync(newParentPath, createIfMissing: true);
+
+            if (oldParentId != null && newParentId != null)
+            {
+                updateRequest.RemoveParents = oldParentId;
+                updateRequest.AddParents = newParentId;
+            }
+        }
+
+        await updateRequest.ExecuteAsync();
+    }
+
 
     public async Task DownloadFileAsync(string remotePath, Stream destinationStream, IProgress<double>? progress = null)
     {

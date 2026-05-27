@@ -8,7 +8,9 @@ public interface ICloudProvider
 
     Task ConnectAsync(CancellationToken cancellationToken);
 
-    Task UploadFileAsync(Stream sourceStream, string remotePath, string contentType, IProgress<double>? progress = null);
+    Task UploadFileAsync(Stream sourceStream, string remotePath, IProgress<double>? progress = null);
+
+    Task RenameRemoteFileAsync(string oldRemotePath, string newRemotePath);
 
     Task DownloadFileAsync(string remotePath, Stream destinationStream, IProgress<double>? progress = null);
 
