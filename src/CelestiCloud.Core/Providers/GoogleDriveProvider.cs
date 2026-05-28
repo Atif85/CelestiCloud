@@ -168,6 +168,8 @@ public class GoogleDriveProvider : ICloudProvider
         }
 
         await updateRequest.ExecuteAsync();
+
+        InvalidateCache(oldRemotePath);
     }
 
 
@@ -231,6 +233,8 @@ public class GoogleDriveProvider : ICloudProvider
             var request = _service!.Files.Delete(remoteFileId);
             await request.ExecuteAsync();
         }
+
+        InvalidateCache(remotePath);
     }
 
     public async Task<IEnumerable<CloudFile>> ListFilesAsync(string remotePath)
@@ -356,9 +360,28 @@ public class GoogleDriveProvider : ICloudProvider
         return currentParentId;
     }
 
+    private void InvalidateCache(string remotePath)
+    {
+        string[] segments = remotePath.Split(['/', '\\'], StringSplitOptions.RemoveEmptyEntries);
+        if (segments.Length == 0) return;
+
+        string normalizedPath = string.Join("/", segments);
+
+        // Remove the target path itself from the cache
+        _folderCache.TryRemove(normalizedPath, out _);
+
+        // Remove any child directories that were inside this path
+        string prefix = normalizedPath + "/";
+        var keysToRemove = _folderCache.Keys.Where(k => k.StartsWith(prefix, StringComparison.OrdinalIgnoreCase)).ToList();
+
+        foreach (var key in keysToRemove)
+        {
+            _folderCache.TryRemove(key, out _);
+        }
+    }
+
     private string GetMimeType(string fileName)
     {
-        // Simple mapping. You can expand this or use a Mime mapping library later.
         string ext = Path.GetExtension(fileName).ToLower();
         return ext switch
         {
@@ -371,7 +394,6 @@ public class GoogleDriveProvider : ICloudProvider
             _ => "application/octet-stream" // Default binary
         };
     }
-
 
     private void EnsureConnected()
     {

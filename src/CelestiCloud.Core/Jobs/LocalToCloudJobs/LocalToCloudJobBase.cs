@@ -24,12 +24,24 @@ public abstract class LocalToCloudJobBase : JobBase
     private int _filesFound;
     private int _filesProcessed;
 
+    private readonly Dictionary<string, string> _folderNameCache = new(StringComparer.OrdinalIgnoreCase);
+
     protected LocalToCloudJobBase(JobConfig config, ICloudProvider provider, string appDataPath, IJobLogger logger)
         : base(config, appDataPath)
     {
         Provider = provider ?? throw new ArgumentNullException(nameof(provider));
         Logger = logger;
         _ignoreFilter = new(config.IgnorePatterns);
+
+        // Precompute and cache root folder names
+        foreach (string localDir in config.LocalPaths)
+        {
+            string resolvedName = ResolveFolderName(localDir);
+            _folderNameCache[localDir] = resolvedName;
+
+            // Log this once on startup as a Debug message instead of millions of times during transfers
+            Logger.Log(LogLevel.Debug, $"[Cache] Mapped local root '{localDir}' to folder name '{resolvedName}'");
+        }
     }
 
     /// <summary>
@@ -101,24 +113,41 @@ public abstract class LocalToCloudJobBase : JobBase
 
     #region Initial Reconciliation Pass
 
-    private async Task CleanupOrphanedRemoteFilesAsync(CancellationToken cancellationToken)
+    private async Task ReconcileAndUploadAsync(CancellationToken cancellationToken)
     {
         foreach (string localDir in Config.LocalPaths)
         {
             cancellationToken.ThrowIfCancellationRequested();
-            if (!Directory.Exists(localDir)) continue;
 
-            // Calculate the root cloud target folder once (e.g., "/CelestiCloud/Downloads")
-            string remoteFolderTarget = GetRemotePath(localDir, localDir);
+            if (!Directory.Exists(localDir))
+                continue;
 
-            Logger.Log(LogLevel.Debug, $"Walking remote path '{remoteFolderTarget}' to clean offline deletions...");
+            // Gather all local files in the directory recursively
+            string[] localFiles = Directory.GetFiles(localDir, "*", SearchOption.AllDirectories);
 
-            // Start recursion, passing the unchanging original roots
-            await WalkAndDeleteOrphansAsync(
-                currentRemoteFolder: remoteFolderTarget,
-                originalRemoteRoot: remoteFolderTarget,
-                originalLocalRoot: localDir,
-                cancellationToken);
+            var eligibleFiles = localFiles
+                .Where(f => !_ignoreFilter.ShouldIgnore(localDir, f))
+                .ToList();
+
+            Interlocked.Add(ref _filesFound, eligibleFiles.Count);
+            State.FilesFound = _filesFound;
+
+            Logger.Log(LogLevel.Debug, $"Found {eligibleFiles.Count} eligible files in {localDir}. Checking remote state...");
+
+            var parallelOptions = new ParallelOptions
+            {
+                MaxDegreeOfParallelism = Config.MaxConcurrentTransfers,
+                CancellationToken = cancellationToken
+            };
+
+            await Parallel.ForEachAsync(eligibleFiles, parallelOptions, async (localFilePath, ct) =>
+            {
+                string remoteFilePath = GetRemotePath(localFilePath, localDir);
+                await ReconcileFileAsync(localFilePath, remoteFilePath, ct);
+
+                Interlocked.Increment(ref _filesProcessed);
+                State.FilesProcessed = _filesProcessed;
+            });
         }
     }
 
@@ -169,45 +198,26 @@ public abstract class LocalToCloudJobBase : JobBase
             }
         }
     }
-
-    private async Task ReconcileAndUploadAsync(CancellationToken cancellationToken)
+    private async Task CleanupOrphanedRemoteFilesAsync(CancellationToken cancellationToken)
     {
         foreach (string localDir in Config.LocalPaths)
         {
             cancellationToken.ThrowIfCancellationRequested();
+            if (!Directory.Exists(localDir)) continue;
 
-            if (!Directory.Exists(localDir))
-                continue;
+            // Calculate the root cloud target folder once (e.g., "/CelestiCloud/Downloads")
+            string remoteFolderTarget = GetRemotePath(localDir, localDir);
 
-            // Gather all local files in the directory recursively
-            string[] localFiles = Directory.GetFiles(localDir, "*", SearchOption.AllDirectories);
+            Logger.Log(LogLevel.Debug, $"Walking remote path '{remoteFolderTarget}' to clean offline deletions...");
 
-            var eligibleFiles = localFiles
-                .Where(f => !_ignoreFilter.ShouldIgnore(localDir, f))
-                .ToList();
-
-            Interlocked.Add(ref _filesFound, eligibleFiles.Count);
-            State.FilesFound = _filesFound;
-
-            Logger.Log(LogLevel.Debug, $"Found {eligibleFiles.Count} eligible files in {localDir}. Checking remote state...");
-
-            var parallelOptions = new ParallelOptions
-            {
-                MaxDegreeOfParallelism = Config.MaxConcurrentTransfers,
-                CancellationToken = cancellationToken
-            };
-
-            await Parallel.ForEachAsync(eligibleFiles, parallelOptions, async (localFilePath, ct) =>
-            {
-                string remoteFilePath = GetRemotePath(localFilePath, localDir);
-                await ReconcileFileAsync(localFilePath, remoteFilePath, ct);
-
-                Interlocked.Increment(ref _filesProcessed);
-                State.FilesProcessed = _filesProcessed;
-            });
+            // Start recursion, passing the unchanging original roots
+            await WalkAndDeleteOrphansAsync(
+                currentRemoteFolder: remoteFolderTarget,
+                originalRemoteRoot: remoteFolderTarget,
+                originalLocalRoot: localDir,
+                cancellationToken);
         }
     }
-
     private async Task WalkAndDeleteOrphansAsync(
         string currentRemoteFolder,
         string originalRemoteRoot,
@@ -261,12 +271,12 @@ public abstract class LocalToCloudJobBase : JobBase
             var watcher = new FileSystemWatcher(localDir)
             {
                 IncludeSubdirectories = true,
-                NotifyFilter = NotifyFilters.FileName | NotifyFilters.LastWrite | NotifyFilters.Size
+                NotifyFilter = NotifyFilters.FileName | NotifyFilters.DirectoryName | NotifyFilters.LastWrite | NotifyFilters.Size
             };
 
             // Hook up events to push tasks to our async channel
-            watcher.Created += (s, e) => QueueEvent(e.FullPath, e.FullPath, localDir, FileEventType.CreatedOrChanged);
-            watcher.Changed += (s, e) => QueueEvent(e.FullPath, e.FullPath, localDir, FileEventType.CreatedOrChanged);
+            watcher.Created += (s, e) => QueueEvent(e.FullPath, e.FullPath, localDir, FileEventType.Created);
+            watcher.Changed += (s, e) => QueueEvent(e.FullPath, e.FullPath, localDir, FileEventType.Changed);
             watcher.Deleted += (s, e) => QueueEvent(e.FullPath, e.FullPath, localDir, FileEventType.Deleted);
             watcher.Renamed += (s, e) => QueueEvent(e.OldFullPath, e.FullPath, localDir, FileEventType.Renamed);
 
@@ -277,10 +287,35 @@ public abstract class LocalToCloudJobBase : JobBase
 
     private void QueueEvent(string oldLocalPath, string newLocalPath, string localRootPath, FileEventType type)
     {
-        // Directory events themselves are ignored; we reconcile files inside directories on-demand
-        if (Directory.Exists(newLocalPath)) return;
+        bool isDirectory = Directory.Exists(newLocalPath);
 
-        if (type == FileEventType.CreatedOrChanged)
+        if (type == FileEventType.Changed && isDirectory)
+        {
+            return;
+        }
+
+        if (type == FileEventType.Created && isDirectory)
+        {
+            try
+            {
+                // Recursively find all files in the newly restored/created directory
+                string[] files = Directory.GetFiles(newLocalPath, "*", SearchOption.AllDirectories);
+                Logger.Log(LogLevel.Debug, $"Directory created/restored: '{newLocalPath}'. Queueing {files.Length} files.");
+
+                foreach (string file in files)
+                {
+                    // Unpack and queue each file as an individual Create event
+                    QueueEvent(file, file, localRootPath, FileEventType.Created);
+                }
+            }
+            catch (Exception ex)
+            {
+                Logger.Log(LogLevel.Error, $"Error scanning newly created/restored directory '{newLocalPath}': {ex.Message}");
+            }
+            return;
+        }
+
+        if (type == FileEventType.Created || type == FileEventType.Changed)
         {
             if (_ignoreFilter.ShouldIgnore(localRootPath, newLocalPath))
             {
@@ -333,6 +368,23 @@ public abstract class LocalToCloudJobBase : JobBase
             }
             catch { /* Suppress */ }
         }
+
+        string folderPrefix = path.EndsWith(Path.DirectorySeparatorChar) ? path : path + Path.DirectorySeparatorChar;
+        foreach (var key in _debounceTicks.Keys)
+        {
+            if (key.StartsWith(folderPrefix, StringComparison.OrdinalIgnoreCase))
+            {
+                if (_debounceTicks.TryRemove(key, out var childCts))
+                {
+                    try
+                    {
+                        childCts.Cancel();
+                        childCts.Dispose();
+                    }
+                    catch { /* Suppress */ }
+                }
+            }
+        }
     }
 
     /// <summary>
@@ -362,7 +414,7 @@ public abstract class LocalToCloudJobBase : JobBase
                         await Provider.RenameRemoteFileAsync(oldRemotePath, remotePath);
                     }
                 }
-                else if (fileEvent.Type == FileEventType.CreatedOrChanged)
+                else if (fileEvent.Type == FileEventType.Created || fileEvent.Type == FileEventType.Changed)
                 {
                     if (File.Exists(fileEvent.NewLocalPath))
                     {
@@ -373,7 +425,7 @@ public abstract class LocalToCloudJobBase : JobBase
                 {
                     if (AllowDeletions)
                     {
-                        Logger.Log(LogLevel.Info, $"[Delete] Remote file: {Path.GetFileName(remotePath)}");
+                        Logger.Log(LogLevel.Info, $"[Delete] Remote item: {Path.GetFileName(remotePath)}");
                         await Provider.DeleteRemoteFileAsync(remotePath, moveToTrash: true);
                     }
                 }
@@ -455,14 +507,11 @@ public abstract class LocalToCloudJobBase : JobBase
 
     private string GetRemotePath(string localPath, string localRootPath)
     {
-        // Extract the local folder leaf name (e.g., "Documents" or "Downloads")
-        string folderName = Path.GetFileName(localRootPath.TrimEnd(Path.DirectorySeparatorChar, Path.AltDirectorySeparatorChar));
-
-        // Fallback if the path is a root drive (e.g., "D:\") to prevent blank folder names
-        if (string.IsNullOrEmpty(folderName))
+        if (!_folderNameCache.TryGetValue(localRootPath, out string? folderName))
         {
-            folderName = localRootPath.Replace(":", "").Replace("\\", "").Replace("/", "").Trim();
-            if (string.IsNullOrEmpty(folderName)) folderName = "Root";
+            // Fallback safety check
+            // Fallback safety check
+            folderName = ResolveFolderName(localRootPath);
         }
 
         // Calculate the relative path from that local root to the specific file
@@ -483,16 +532,32 @@ public abstract class LocalToCloudJobBase : JobBase
         return $"{remoteRoot}/{folderName}/{normalizedRelativePath}";
     }
 
+    private string ResolveFolderName(string localRootPath)
+    {
+        // Extract the local folder leaf name (e.g., "Downloads")
+        string folderName = Path.GetFileName(localRootPath.TrimEnd(Path.DirectorySeparatorChar, Path.AltDirectorySeparatorChar));
+
+        // Fallback if the path is a root drive (e.g., "D:\") to prevent blank folder names
+        if (string.IsNullOrEmpty(folderName))
+        {
+            folderName = localRootPath.Replace(":", "").Replace("\\", "").Replace("/", "").Trim();
+            if (string.IsNullOrEmpty(folderName)) folderName = "Root";
+        }
+
+        return folderName;
+    }
+
 
     #endregion
 
-        #region Internal Structs
+    #region Internal Structs
 
     private enum FileEventType
-    { 
-        CreatedOrChanged,
+    {
+        Created, 
+        Changed,
         Deleted,
-        Renamed 
+        Renamed
     }
     private readonly record struct FileEvent(string OldLocalPath, string NewLocalPath, string LocalRootPath, FileEventType Type);
 
