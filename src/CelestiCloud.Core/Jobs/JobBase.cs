@@ -1,8 +1,4 @@
 ﻿using CelestiCloud.Core.Models;
-using System;
-using System.Collections.Generic;
-using System.Runtime.Remoting;
-using System.Text;
 
 namespace CelestiCloud.Core.Jobs;
 
@@ -10,6 +6,7 @@ public abstract class JobBase
 {
     public JobConfig Config { get; }
     public bool IsRunning { get; private set; }
+    public SyncState State { get; } = new();
 
     protected readonly string AppDataPath;
 

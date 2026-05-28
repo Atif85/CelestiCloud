@@ -21,8 +21,7 @@ public class ProviderFactory
     /// </summary>
     public async Task<ICloudProvider> CreateProviderAsync(AccountConfig account, CancellationToken cancellationToken = default)
     {
-        if (account.Provider.Equals("googledrive", StringComparison.OrdinalIgnoreCase) ||
-            account.Provider.Equals("google", StringComparison.OrdinalIgnoreCase))
+        if (account.Provider.Equals("googledrive", StringComparison.OrdinalIgnoreCase))
         {
             string credentialsPath = "credentials.json";
 

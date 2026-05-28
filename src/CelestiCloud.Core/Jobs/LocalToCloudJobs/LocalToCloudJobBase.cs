@@ -9,8 +9,6 @@ namespace CelestiCloud.Core.Jobs;
 
 public abstract class LocalToCloudJobBase : JobBase
 {
-    public SyncState State { get; } = new();
-
     protected readonly ICloudProvider Provider;
     protected readonly IJobLogger Logger;
     protected abstract bool AllowDeletions { get; }
@@ -381,10 +379,6 @@ public abstract class LocalToCloudJobBase : JobBase
             if (!State.ActiveTransfers.TryRemove(localPath, out _))
             {
                 Logger.Log(LogLevel.Error, $"ActiveTransefers.TryRemove failed for {localPath}");
-            }
-            else
-            {
-                Logger.Log(LogLevel.Debug, $"ActiveTransefers.TryRemove worked for {localPath}");
             }
         }
 

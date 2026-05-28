@@ -1,9 +1,6 @@
 ﻿using CelestiCloud.Core.Logging;
-using System;
-using System.Collections.Generic;
-using System.Text;
 
-namespace CelestiCloud.CLI;
+namespace CelestiCloud.CLI.Util;
 
 internal class ConsoleLogger : IJobLogger
 {

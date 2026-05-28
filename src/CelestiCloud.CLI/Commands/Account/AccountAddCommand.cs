@@ -16,9 +16,12 @@ public class AccountAddCommand : AsyncCommand<AccountAddSettings>
 
         string targetProvider = settings.Provider.ToLower();
 
+        if (targetProvider == "google")
+            targetProvider = "googledrive";
+
         AnsiConsole.MarkupLine($"[cyan]Initializing connection sequence for provider: '{targetProvider}'...[/]");
 
-        // 1. Generate a brand new Account ID
+        // 1.Generate a brand new Account ID
         string accountId = $"acc-{targetProvider}-{Guid.NewGuid().ToString()[..8]}";
 
         // Create a temporary AccountConfig to initialize our provider
