@@ -101,44 +101,6 @@ public abstract class LocalToCloudJobBase : JobBase
 
     #region Initial Reconciliation Pass
 
-    private async Task ReconcileAndUploadAsync(CancellationToken cancellationToken)
-    {
-        foreach (string localDir in Config.LocalPaths)
-        {
-            cancellationToken.ThrowIfCancellationRequested();
-
-            if (!Directory.Exists(localDir))
-                continue;
-
-            // Gather all local files in the directory recursively
-            string[] localFiles = Directory.GetFiles(localDir, "*", SearchOption.AllDirectories);
-
-            var eligibleFiles = localFiles
-                .Where(f => !_ignoreFilter.ShouldIgnore(localDir, f))
-                .ToList();
-
-            Interlocked.Add(ref _filesFound, eligibleFiles.Count);
-            State.FilesFound = _filesFound;
-
-            Logger.Log(LogLevel.Debug, $"Found {eligibleFiles.Count} eligible files in {localDir}. Checking remote state...");
-
-            var parallelOptions = new ParallelOptions
-            {
-                MaxDegreeOfParallelism = Config.MaxConcurrentTransfers,
-                CancellationToken = cancellationToken
-            };
-
-            await Parallel.ForEachAsync(eligibleFiles, parallelOptions, async (localFilePath, ct) =>
-            {
-                string remoteFilePath = GetRemotePath(localFilePath, localDir);
-                await ReconcileFileAsync(localFilePath, remoteFilePath, ct);
-
-                Interlocked.Increment(ref _filesProcessed);
-                State.FilesProcessed = _filesProcessed;
-            });
-        }
-    }
-
     private async Task CleanupOrphanedRemoteFilesAsync(CancellationToken cancellationToken)
     {
         foreach (string localDir in Config.LocalPaths)
@@ -146,10 +108,17 @@ public abstract class LocalToCloudJobBase : JobBase
             cancellationToken.ThrowIfCancellationRequested();
             if (!Directory.Exists(localDir)) continue;
 
+            // Calculate the root cloud target folder once (e.g., "/CelestiCloud/Downloads")
             string remoteFolderTarget = GetRemotePath(localDir, localDir);
 
-            // Recursively walk the remote directory
-            await WalkAndDeleteOrphansAsync(remoteFolderTarget, localDir, cancellationToken);
+            Logger.Log(LogLevel.Debug, $"Walking remote path '{remoteFolderTarget}' to clean offline deletions...");
+
+            // Start recursion, passing the unchanging original roots
+            await WalkAndDeleteOrphansAsync(
+                currentRemoteFolder: remoteFolderTarget,
+                originalRemoteRoot: remoteFolderTarget,
+                originalLocalRoot: localDir,
+                cancellationToken);
         }
     }
 
@@ -201,36 +170,78 @@ public abstract class LocalToCloudJobBase : JobBase
         }
     }
 
-    private async Task WalkAndDeleteOrphansAsync(string remoteFolder, string localRoot, CancellationToken ct)
+    private async Task ReconcileAndUploadAsync(CancellationToken cancellationToken)
+    {
+        foreach (string localDir in Config.LocalPaths)
+        {
+            cancellationToken.ThrowIfCancellationRequested();
+
+            if (!Directory.Exists(localDir))
+                continue;
+
+            // Gather all local files in the directory recursively
+            string[] localFiles = Directory.GetFiles(localDir, "*", SearchOption.AllDirectories);
+
+            var eligibleFiles = localFiles
+                .Where(f => !_ignoreFilter.ShouldIgnore(localDir, f))
+                .ToList();
+
+            Interlocked.Add(ref _filesFound, eligibleFiles.Count);
+            State.FilesFound = _filesFound;
+
+            Logger.Log(LogLevel.Debug, $"Found {eligibleFiles.Count} eligible files in {localDir}. Checking remote state...");
+
+            var parallelOptions = new ParallelOptions
+            {
+                MaxDegreeOfParallelism = Config.MaxConcurrentTransfers,
+                CancellationToken = cancellationToken
+            };
+
+            await Parallel.ForEachAsync(eligibleFiles, parallelOptions, async (localFilePath, ct) =>
+            {
+                string remoteFilePath = GetRemotePath(localFilePath, localDir);
+                await ReconcileFileAsync(localFilePath, remoteFilePath, ct);
+
+                Interlocked.Increment(ref _filesProcessed);
+                State.FilesProcessed = _filesProcessed;
+            });
+        }
+    }
+
+    private async Task WalkAndDeleteOrphansAsync(
+        string currentRemoteFolder,
+        string originalRemoteRoot,
+        string originalLocalRoot,
+        CancellationToken ct)
     {
         ct.ThrowIfCancellationRequested();
 
-        var remoteItems = await Provider.ListFilesAsync(remoteFolder);
+        var remoteItems = await Provider.ListFilesAsync(currentRemoteFolder);
 
         foreach (var item in remoteItems)
         {
-            string itemRemotePath = $"{remoteFolder.TrimEnd('/')}/{item.Name}";
+            // Simple append to find the absolute remote path for this item
+            string itemRemotePath = $"{currentRemoteFolder.TrimEnd('/')}/{item.Name}";
 
             if (item.IsFolder)
             {
-                // Traverse subdirectories recursively
-                await WalkAndDeleteOrphansAsync(itemRemotePath, localRoot, ct);
+                // Traverse subdirectories recursively, preserving the original absolute roots!
+                await WalkAndDeleteOrphansAsync(itemRemotePath, originalRemoteRoot, originalLocalRoot, ct);
             }
             else
             {
-                // Reverse-map the remote path back to what the local path should be
-                string relativePath = itemRemotePath.Substring(Config.RemoteRootPath.Length).TrimStart('/');
-                string expectedLocalPath = Path.GetFullPath(Path.Combine(localRoot, relativePath));
+                // Safe, absolute reverse-mapping using the unchanging originalRemoteRoot
+                string relativePath = itemRemotePath.Substring(originalRemoteRoot.Length).TrimStart('/');
+                string expectedLocalPath = Path.GetFullPath(Path.Combine(originalLocalRoot, relativePath));
 
-                // If the file does not exist locally, it was deleted while the app was offline!
                 if (!File.Exists(expectedLocalPath))
                 {
+                    Logger.Log(LogLevel.Info, $"[Cleanup] Removing orphaned remote file: {item.Name}");
                     await Provider.DeleteRemoteFileAsync(itemRemotePath, moveToTrash: true);
                 }
-                // Alternatively, if it exists locally but the user JUST added an ignore rule for it,
-                // we delete the remote copy to respect the new ignore rule.
-                else if (_ignoreFilter.ShouldIgnore(localRoot, expectedLocalPath))
+                else if (_ignoreFilter.ShouldIgnore(originalLocalRoot, expectedLocalPath))
                 {
+                    Logger.Log(LogLevel.Info, $"[Cleanup] Removing newly ignored remote file: {item.Name}");
                     await Provider.DeleteRemoteFileAsync(itemRemotePath, moveToTrash: true);
                 }
             }
@@ -444,14 +455,38 @@ public abstract class LocalToCloudJobBase : JobBase
 
     private string GetRemotePath(string localPath, string localRootPath)
     {
+        // Extract the local folder leaf name (e.g., "Documents" or "Downloads")
+        string folderName = Path.GetFileName(localRootPath.TrimEnd(Path.DirectorySeparatorChar, Path.AltDirectorySeparatorChar));
+
+        // Fallback if the path is a root drive (e.g., "D:\") to prevent blank folder names
+        if (string.IsNullOrEmpty(folderName))
+        {
+            folderName = localRootPath.Replace(":", "").Replace("\\", "").Replace("/", "").Trim();
+            if (string.IsNullOrEmpty(folderName)) folderName = "Root";
+        }
+
+        // Calculate the relative path from that local root to the specific file
         string relativePath = Path.GetRelativePath(localRootPath, localPath);
+
+        // Normalize path separators to forward slashes for the cloud API
         string normalizedRelativePath = relativePath.Replace('\\', '/');
-        return $"{Config.RemoteRootPath.TrimEnd('/')}/{normalizedRelativePath}";
+
+        // Prepend the folder name to preserve directory structures inside the cloud root
+        string remoteRoot = Config.RemoteRootPath.TrimEnd('/');
+
+        if (normalizedRelativePath == ".")
+        {
+            // This handles cases where we are resolving the root folder itself
+            return $"{remoteRoot}/{folderName}";
+        }
+
+        return $"{remoteRoot}/{folderName}/{normalizedRelativePath}";
     }
+
 
     #endregion
 
-    #region Internal Structs
+        #region Internal Structs
 
     private enum FileEventType
     { 
