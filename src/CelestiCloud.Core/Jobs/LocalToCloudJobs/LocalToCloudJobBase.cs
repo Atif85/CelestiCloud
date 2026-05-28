@@ -3,6 +3,7 @@ using CelestiCloud.Core.IO;
 using CelestiCloud.Core.Logging;
 using CelestiCloud.Core.Models;
 using CelestiCloud.Core.Providers;
+using System.Collections.Concurrent;
 using System.Threading.Channels;
 
 namespace CelestiCloud.Core.Jobs;
@@ -17,6 +18,8 @@ public abstract class LocalToCloudJobBase : JobBase
 
     private readonly List<FileSystemWatcher> _watchers = [];
     private Channel<FileEvent>? _eventChannel;
+
+    private readonly ConcurrentDictionary<string, CancellationTokenSource> _debounceTicks = [];
 
     private int _filesFound;
     private int _filesProcessed;
@@ -81,6 +84,13 @@ public abstract class LocalToCloudJobBase : JobBase
         {
             // Clean up: Stop watching files and close the queue
             DisposeWatchers();
+
+            foreach (var key in _debounceTicks.Keys)
+            {
+                CancelPendingDebounce(key);
+            }
+            _debounceTicks.Clear();
+
             _eventChannel.Writer.Complete();
 
             await Task.WhenAll(workerTasks);
@@ -259,12 +269,59 @@ public abstract class LocalToCloudJobBase : JobBase
         // Directory events themselves are ignored; we reconcile files inside directories on-demand
         if (Directory.Exists(newLocalPath)) return;
 
-        if (type == FileEventType.CreatedOrChanged && _ignoreFilter.ShouldIgnore(localRootPath, newLocalPath))
+        if (type == FileEventType.CreatedOrChanged)
         {
-            return;
-        }
+            if (_ignoreFilter.ShouldIgnore(localRootPath, newLocalPath))
+            {
+                return;
+            }
 
-        _eventChannel?.Writer.TryWrite(new FileEvent(oldLocalPath, newLocalPath, localRootPath, type));
+            // Debounce: Cancel any existing pending timer for this exact path
+            CancelPendingDebounce(newLocalPath);
+
+            var cts = new CancellationTokenSource();
+            _debounceTicks[newLocalPath] = cts;
+
+            // Spawn a delayed task to push the event only after the file goes quiet
+            _ = Task.Run(async () =>
+            {
+                try
+                {
+                    // Wait for the filesystem to stabilize (2 seconds)
+                    await Task.Delay(2000, cts.Token);
+
+                    if (_debounceTicks.TryRemove(newLocalPath, out _))
+                    {
+                        _eventChannel?.Writer.TryWrite(new FileEvent(oldLocalPath, newLocalPath, localRootPath, type));
+                    }
+                }
+                catch (TaskCanceledException)
+                {
+                    // Suppressed: A newer event took over or the file was deleted/renamed
+                }
+            });
+        }
+        else
+        {
+            // For Renames or Deletes, immediately cancel any pending Creation/Change timers
+            CancelPendingDebounce(oldLocalPath);
+            CancelPendingDebounce(newLocalPath);
+
+            _eventChannel?.Writer.TryWrite(new FileEvent(oldLocalPath, newLocalPath, localRootPath, type));
+        }
+    }
+
+    private void CancelPendingDebounce(string path)
+    {
+        if (_debounceTicks.TryRemove(path, out var cts))
+        {
+            try
+            {
+                cts.Cancel();
+                cts.Dispose();
+            }
+            catch { /* Suppress */ }
+        }
     }
 
     /// <summary>
@@ -296,9 +353,6 @@ public abstract class LocalToCloudJobBase : JobBase
                 }
                 else if (fileEvent.Type == FileEventType.CreatedOrChanged)
                 {
-                    // Basic file stabilization/debounce wait (gives applications time to finish saving)
-                    await Task.Delay(2000, cancellationToken);
-
                     if (File.Exists(fileEvent.NewLocalPath))
                     {
                         await ReconcileFileAsync(fileEvent.NewLocalPath, remotePath, cancellationToken);
@@ -357,7 +411,11 @@ public abstract class LocalToCloudJobBase : JobBase
             {
                 try
                 {
-                    await using var rawFileStream = new FileStream(localPath, FileMode.Open, FileAccess.Read, FileShare.Read);
+                    await using var rawFileStream = new FileStream(
+                        localPath,
+                        FileMode.Open,
+                        FileAccess.Read,
+                        FileShare.ReadWrite | FileShare.Delete);
 
                     // TODO For now, limiter is null (unthrottled).
                     await using var throttledStream = new ThrottledStream(rawFileStream, limiter: null);
