@@ -4,7 +4,7 @@ using CelestiCloud.Core.Config;
 using Spectre.Console;
 using Spectre.Console.Cli;
 
-namespace CelestiCloud.CLI.Commands;
+namespace CelestiCloud.CLI.Commands.Account;
 
 public class AccountListCommand : AsyncCommand<EmptyCommandSettings>
 {

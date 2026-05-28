@@ -1,7 +1,7 @@
 ﻿using System.ComponentModel;
 using Spectre.Console.Cli;
 
-namespace CelestiCloud.CLI.Commands.Settings;
+namespace CelestiCloud.CLI.Commands.Account.Settings;
 
 public class AccountRemoveSettings : CommandSettings
 {

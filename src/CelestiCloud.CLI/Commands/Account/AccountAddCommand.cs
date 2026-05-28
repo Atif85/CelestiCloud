@@ -1,11 +1,11 @@
-﻿using CelestiCloud.CLI.Commands.Settings;
+﻿using CelestiCloud.CLI.Commands.Account.Settings;
 using CelestiCloud.Core.Config;
 using CelestiCloud.Core.Models;
 using CelestiCloud.Core.Providers;
 using Spectre.Console;
 using Spectre.Console.Cli;
 
-namespace CelestiCloud.CLI.Commands;
+namespace CelestiCloud.CLI.Commands.Account;
 
 public class AccountAddCommand : AsyncCommand<AccountAddSettings>
 {

@@ -1,4 +1,4 @@
-﻿using CelestiCloud.CLI.Commands.Settings;
+﻿using CelestiCloud.CLI.Commands.Account.Settings;
 using CelestiCloud.Core.Config;
 using CelestiCloud.Core.Providers;
 using Spectre.Console;
@@ -6,7 +6,7 @@ using Spectre.Console.Cli;
 using System;
 using System.Threading.Tasks;
 
-namespace CelestiCloud.CLI.Commands;
+namespace CelestiCloud.CLI.Commands.Account;
 
 public class AccountRemoveCommand : AsyncCommand<AccountRemoveSettings>
 {

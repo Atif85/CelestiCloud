@@ -1,7 +1,7 @@
 ﻿using Spectre.Console.Cli;
 using System.ComponentModel;
 
-namespace CelestiCloud.CLI.Commands.Settings;
+namespace CelestiCloud.CLI.Commands.Account.Settings;
 
 public class AccountAddSettings : CommandSettings
 {
