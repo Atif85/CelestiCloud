@@ -120,7 +120,13 @@ public abstract class LocalToCloudJobBase : JobBase
             cancellationToken.ThrowIfCancellationRequested();
 
             if (!Directory.Exists(localDir))
-                continue;
+            {
+                Logger.Log(LogLevel.Error, $"Local root directory is missing: '{localDir}'. Halting job to prevent accidental cloud deletions.");
+
+                // Gracefully stop the job immediately
+                _ = StopAsync();
+                return;
+            }
 
             // Gather all local files in the directory recursively
             string[] localFiles = Directory.GetFiles(localDir, "*", SearchOption.AllDirectories);
@@ -279,6 +285,14 @@ public abstract class LocalToCloudJobBase : JobBase
             watcher.Changed += (s, e) => QueueEvent(e.FullPath, e.FullPath, localDir, FileEventType.Changed);
             watcher.Deleted += (s, e) => QueueEvent(e.FullPath, e.FullPath, localDir, FileEventType.Deleted);
             watcher.Renamed += (s, e) => QueueEvent(e.OldFullPath, e.FullPath, localDir, FileEventType.Renamed);
+
+            watcher.Error += (sender, args) =>
+            {
+                var exception = args.GetException();
+                Logger.Log(LogLevel.Error, $"Critical error on watcher for '{localDir}': {exception?.Message ?? "Directory unmounted or deleted"}. Halting job.");
+
+                _ = StopAsync();
+            };
 
             watcher.EnableRaisingEvents = true;
             _watchers.Add(watcher);
