@@ -1,20 +1,13 @@
 ﻿<Project Sdk="Microsoft.NET.Sdk">
+
   <PropertyGroup>
     <OutputType>WinExe</OutputType>
     <TargetFramework>net10.0</TargetFramework>
+    <Version>0.1.0-alpha</Version>
     <Nullable>enable</Nullable>
     <ApplicationManifest>app.manifest</ApplicationManifest>
     <AvaloniaUseCompiledBindingsByDefault>true</AvaloniaUseCompiledBindingsByDefault>
   </PropertyGroup>
-
-  <ItemGroup>
-    <Folder Include="Models\" />
-    <AvaloniaResource Include="Assets\**" />
-  </ItemGroup>
-
-	<ItemGroup>
-		<ProjectReference Include="..\CelestiCloud.Core\CelestiCloud.Core.csproj" />
-	</ItemGroup>
 
   <ItemGroup>
     <PackageReference Include="Avalonia" Version="12.0.3" />
@@ -27,4 +20,14 @@
     </PackageReference>
     <PackageReference Include="CommunityToolkit.Mvvm" Version="8.4.1" />
   </ItemGroup>
+
+  <ItemGroup>
+    <Folder Include="Models\" />
+    <AvaloniaResource Include="Assets\**" />
+  </ItemGroup>
+
+	<ItemGroup>
+		<ProjectReference Include="..\CelestiCloud.Core\CelestiCloud.Core.csproj" />
+	</ItemGroup>
+
 </Project>

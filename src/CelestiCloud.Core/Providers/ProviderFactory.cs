@@ -23,12 +23,10 @@ public class ProviderFactory
     {
         if (account.Provider.Equals("googledrive", StringComparison.OrdinalIgnoreCase))
         {
-            string credentialsPath = "credentials.json";
-
             // Map the token store to a subfolder specifically named after this Account ID
             string tokenDirectory = Path.Combine(_configManager.GetTokensDirectory(), account.Id);
 
-            var provider = new GoogleDriveProvider(credentialsPath, tokenDirectory);
+            var provider = new GoogleDriveProvider(tokenDirectory);
             await provider.ConnectAsync(cancellationToken);
             return provider;
         }

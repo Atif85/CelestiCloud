@@ -1,4 +1,4 @@
-﻿using System.Threading.Tasks;
+﻿using System.Reflection;
 using CelestiCloud.CLI.Commands.Account;
 using CelestiCloud.CLI.Commands.Job;
 using CelestiCloud.CLI.Commands.Start;
@@ -10,13 +10,16 @@ public class Program
 {
     public static async Task<int> Main(string[] args)
     {
+        Console.OutputEncoding = System.Text.Encoding.UTF8;
+
         var app = new CommandApp();
 
         app.Configure(config =>
         {
             config.SetApplicationName("celesticloud");
-            config.SetApplicationVersion("1.0.0");
-
+            var version = Assembly.GetExecutingAssembly().GetName().Version?.ToString(3) ?? "0.1.0";
+            config.SetApplicationVersion("{version}-alpha");
+    
             // Help configuration: Enables both "celesticloud account --help" and "celesticloud account add -h"
             config.ValidateExamples();
 

@@ -5,6 +5,7 @@ using Google.Apis.Services;
 using Google.Apis.Upload;
 using Google.Apis.Util.Store;
 using System.Collections.Concurrent;
+using System.Reflection;
 using DriveFile = Google.Apis.Drive.v3.Data.File;
 
 namespace CelestiCloud.Core.Providers;
@@ -12,7 +13,6 @@ public class GoogleDriveProvider : ICloudProvider
 {
     public string ProviderName => "Google Drive";
     private const string APP_NAME = "CelestiCloud";
-    private readonly string _credentialsFilePath;
     private readonly string _tokenDirectoryPath;
 
     private DriveService? _service;
@@ -23,27 +23,33 @@ public class GoogleDriveProvider : ICloudProvider
     private const string FolderMimeType = "application/vnd.google-apps.folder";
     private static readonly string[] Scopes = 
     {
-        DriveService.Scope.Drive
+        DriveService.Scope.DriveFile
     };
 
-    public GoogleDriveProvider(string credentialsFilePath, string tokenDirectoryPath)
+    public GoogleDriveProvider(string tokenDirectoryPath)
     {
-        _credentialsFilePath = credentialsFilePath;
         _tokenDirectoryPath = tokenDirectoryPath;
     }
 
     public async Task ConnectAsync(CancellationToken cancellationToken = default)
     {
-        if (!File.Exists(_credentialsFilePath))
-        {
-            throw new FileNotFoundException($"credentials.json not found at {_credentialsFilePath}");
-        }
-
         UserCredential credential;
 
-        // Load the credentials.json
-        using (var stream = new FileStream(_credentialsFilePath, FileMode.Open, FileAccess.Read))
+        // Load the credentials
+        var assembly = Assembly.GetExecutingAssembly();
+        
+        // Note: The resource name is usually "ProjectNamespace.FileName"
+        string resourceName = "CelestiCloud.Core.credentials.json";
+
+        await using (var stream = assembly.GetManifestResourceStream(resourceName))
         {
+            if (stream == null)
+            {
+                throw new InvalidOperationException(
+                    "FATAL: credentials.json was not found embedded in the application binary.");
+            }
+
+            // 2. Authorize using the embedded stream
             credential = await GoogleWebAuthorizationBroker.AuthorizeAsync(
                 GoogleClientSecrets.FromStream(stream).Secrets,
                 Scopes,
