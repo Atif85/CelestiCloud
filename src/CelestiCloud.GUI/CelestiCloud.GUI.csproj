@@ -12,6 +12,10 @@
     <AvaloniaResource Include="Assets\**" />
   </ItemGroup>
 
+	<ItemGroup>
+		<ProjectReference Include="..\CelestiCloud.Core\CelestiCloud.Core.csproj" />
+	</ItemGroup>
+
   <ItemGroup>
     <PackageReference Include="Avalonia" Version="12.0.3" />
     <PackageReference Include="Avalonia.Desktop" Version="12.0.3" />

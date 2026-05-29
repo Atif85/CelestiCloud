@@ -1,20 +1,120 @@
-<Window xmlns="https://github.com/avaloniaui"
+﻿<Window xmlns="https://github.com/avaloniaui"
         xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
         xmlns:vm="using:CelestiCloud.GUI.ViewModels"
+        xmlns:views="using:CelestiCloud.GUI.Views"
         xmlns:d="http://schemas.microsoft.com/expression/blend/2008"
         xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006"
-        mc:Ignorable="d" d:DesignWidth="800" d:DesignHeight="450"
+        mc:Ignorable="d" 
+        d:DesignWidth="800" d:DesignHeight="500"
+
+        MinWidth="800"
+        MinHeight="500"
+
         x:Class="CelestiCloud.GUI.Views.MainWindow"
         x:DataType="vm:MainWindowViewModel"
         Icon="/Assets/avalonia-logo.ico"
-        Title="CelestiCloud.GUI">
+        Title="CelestiCloud"
+        Background="{DynamicResource AppBackgroundBrush}">
 
-    <Design.DataContext>
-        <!-- This only sets the DataContext for the previewer in an IDE,
-             to set the actual DataContext for runtime, set the DataContext property in code (look at App.axaml.cs) -->
-        <vm:MainWindowViewModel/>
-    </Design.DataContext>
+    <Window.DataTemplates>
+        <DataTemplate DataType="{x:Type vm:DashboardViewModel}">
+            <views:DashboardView />
+        </DataTemplate>
+        <DataTemplate DataType="{x:Type vm:JobsViewModel}">
+            <views:JobsView />
+        </DataTemplate>
+        <DataTemplate DataType="{x:Type vm:AccountsViewModel}">
+            <views:AccountsView />
+        </DataTemplate>
+        <DataTemplate DataType="{x:Type vm:SettingsViewModel}">
+            <views:SettingsView />
+        </DataTemplate>
+    </Window.DataTemplates>
 
-    <TextBlock Text="{Binding Greeting}" HorizontalAlignment="Center" VerticalAlignment="Center"/>
+    <Grid>
+        <Grid.ColumnDefinitions>
+            <ColumnDefinition Width="{Binding SidebarWidth, Mode=TwoWay}" 
+                              MinWidth="{Binding SidebarMinWidth}" 
+                              MaxWidth="350"/>
+            <ColumnDefinition Width="Auto" />
+            <ColumnDefinition Width="*" />
+        </Grid.ColumnDefinitions>
+        
+        <!-- COLUMN 0: SIDEBAR PANEL -->
+        <Border Grid.Column="0" 
+                Background="{DynamicResource SidebarBackgroundBrush}" 
+                BorderBrush="{DynamicResource DividerBrush}" 
+                BorderThickness="0,0,1,0">
+            <Grid RowDefinitions="Auto, *, Auto" Margin="12">
+                
+                <!-- Header (App Title & Collapse Toggle Button) -->
+                <Grid Grid.Row="0" ColumnDefinitions="*, Auto" Margin="0,0,0,20">
+                    <TextBlock Grid.Column="0" 
+                               Text="CelestiCloud" 
+                               FontSize="20" 
+                               FontWeight="Bold" 
+                               Foreground="{DynamicResource TextPrimaryBrush}"
+                               VerticalAlignment="Center"
+                               IsVisible="{Binding !IsSidebarCollapsed}"
+                               Margin="5,0,0,0"/>
+                    <Button Grid.Column="1" 
+                            Content="☰" 
+                            Command="{Binding ToggleSidebarCommand}"
+                            Background="Transparent"
+                            Foreground="{DynamicResource TextPrimaryBrush}"
+                            HorizontalAlignment="Center"
+                            Width="36"
+                            Height="36"
+                            VerticalContentAlignment="Center"
+                            HorizontalContentAlignment="Center"/>
+                </Grid>
 
+                <!-- Navigation List -->
+                <StackPanel Grid.Row="1" Spacing="6">
+                    <Button Command="{Binding NavigateCommand}" CommandParameter="dashboard" HorizontalAlignment="Stretch" Padding="8,10" Background="Transparent">
+                        <StackPanel Orientation="Horizontal" Spacing="15">
+                            <TextBlock Text="📊" FontSize="18" Foreground="{DynamicResource TextPrimaryBrush}"/>
+                            <TextBlock Text="Dashboard" Foreground="{DynamicResource TextPrimaryBrush}" VerticalAlignment="Center" IsVisible="{Binding !IsSidebarCollapsed}"/>
+                        </StackPanel>
+                    </Button>
+
+                    <Button Command="{Binding NavigateCommand}" CommandParameter="jobs" HorizontalAlignment="Stretch" Padding="8,10" Background="Transparent">
+                        <StackPanel Orientation="Horizontal" Spacing="15">
+                            <TextBlock Text="📁" FontSize="18" Foreground="{DynamicResource TextPrimaryBrush}"/>
+                            <TextBlock Text="Jobs" Foreground="{DynamicResource TextPrimaryBrush}" VerticalAlignment="Center" IsVisible="{Binding !IsSidebarCollapsed}"/>
+                        </StackPanel>
+                    </Button>
+
+                    <Button Command="{Binding NavigateCommand}" CommandParameter="accounts" HorizontalAlignment="Stretch" Padding="8,10" Background="Transparent">
+                        <StackPanel Orientation="Horizontal" Spacing="15">
+                            <TextBlock Text="👤" FontSize="18" Foreground="{DynamicResource TextPrimaryBrush}"/>
+                            <TextBlock Text="Accounts" Foreground="{DynamicResource TextPrimaryBrush}" VerticalAlignment="Center" IsVisible="{Binding !IsSidebarCollapsed}"/>
+                        </StackPanel>
+                    </Button>
+                </StackPanel>
+
+                <!-- Bottom Sticky (Settings Button) -->
+                <StackPanel Grid.Row="2" Spacing="6">
+                    <Button Command="{Binding NavigateCommand}" CommandParameter="settings" HorizontalAlignment="Stretch" Padding="8,10" Background="Transparent">
+                        <StackPanel Orientation="Horizontal" Spacing="15">
+                            <TextBlock Text="⚙️" FontSize="18" Foreground="{DynamicResource TextPrimaryBrush}"/>
+                            <TextBlock Text="Settings" Foreground="{DynamicResource TextPrimaryBrush}" VerticalAlignment="Center" IsVisible="{Binding !IsSidebarCollapsed}"/>
+                        </StackPanel>
+                    </Button>
+                </StackPanel>
+            </Grid>
+        </Border>
+
+        <!-- COLUMN 1: THE RESIZABLE GRIP (GRID SPLITTER) -->
+        <GridSplitter Grid.Column="1" 
+                      Width="4" 
+                      ResizeBehavior="PreviousAndNext" 
+                      Background="{DynamicResource DividerBrush}"
+                      IsEnabled="{Binding !IsSidebarCollapsed}"
+                      IsVisible="{Binding !IsSidebarCollapsed}"/>
+
+        <!-- COLUMN 2: ACTIVE CONTENT DISPLAY PANEL -->
+        <ContentControl Grid.Column="2" Content="{Binding CurrentPage}" />
+        
+    </Grid>
 </Window>

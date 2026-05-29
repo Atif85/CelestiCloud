@@ -1,15 +1,45 @@
 <Application xmlns="https://github.com/avaloniaui"
              xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
              x:Class="CelestiCloud.GUI.App"
-             xmlns:local="using:CelestiCloud.GUI"
-             RequestedThemeVariant="Default">
-             <!-- "Default" ThemeVariant follows system theme variant. "Dark" or "Light" are other available options. -->
+			 xmlns:local="using:CelestiCloud.GUI"
+             RequestedThemeVariant="Dark">
+	<!-- Default to dark mode -->
 
     <Application.DataTemplates>
         <local:ViewLocator/>
     </Application.DataTemplates>
-  
-    <Application.Styles>
-        <FluentTheme />
-    </Application.Styles>
+
+	<Application.Styles>
+		<FluentTheme />
+	</Application.Styles>
+
+    <Application.Resources>
+        <ResourceDictionary>
+            <ResourceDictionary.ThemeDictionaries>
+                
+                <!-- DARK THEME PALETTE -->
+                <ResourceDictionary x:Key="Dark">
+                    <SolidColorBrush x:Key="AppBackgroundBrush">#121212</SolidColorBrush>
+                    <SolidColorBrush x:Key="SidebarBackgroundBrush">#1c1c1e</SolidColorBrush>
+                    <SolidColorBrush x:Key="ContentBackgroundBrush">#1e1e1e</SolidColorBrush>
+                    <SolidColorBrush x:Key="DividerBrush">#2c2c2e</SolidColorBrush>
+                    
+                    <SolidColorBrush x:Key="TextPrimaryBrush">#ffffff</SolidColorBrush>
+                    <SolidColorBrush x:Key="TextSecondaryBrush">#9ca3af</SolidColorBrush>
+                </ResourceDictionary>
+
+                <!-- LIGHT THEME PALETTE -->
+                <ResourceDictionary x:Key="Light">
+                    <SolidColorBrush x:Key="AppBackgroundBrush">#f3f4f6</SolidColorBrush>
+                    <SolidColorBrush x:Key="SidebarBackgroundBrush">#ffffff</SolidColorBrush>
+                    <SolidColorBrush x:Key="ContentBackgroundBrush">#ffffff</SolidColorBrush>
+                    <SolidColorBrush x:Key="DividerBrush">#e5e7eb</SolidColorBrush>
+                    
+                    <SolidColorBrush x:Key="TextPrimaryBrush">#111827</SolidColorBrush>
+                    <SolidColorBrush x:Key="TextSecondaryBrush">#6b7280</SolidColorBrush>
+                </ResourceDictionary>
+                
+            </ResourceDictionary.ThemeDictionaries>
+        </ResourceDictionary>
+    </Application.Resources>
 </Application>

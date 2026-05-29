@@ -1,0 +1,13 @@
+<UserControl xmlns="https://github.com/avaloniaui"
+             xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+             x:Class="CelestiCloud.GUI.Views.AccountsView">
+    
+    <!-- Changed Grid to Border to support the Padding property -->
+    <Border Background="{DynamicResource ContentBackgroundBrush}" Padding="20">
+        <StackPanel Spacing="10">
+            <TextBlock Text="Connected Accounts" FontSize="24" FontWeight="Bold" Foreground="{DynamicResource TextPrimaryBrush}"/>
+            <TextBlock Text="Link and disconnect your Google Drive and Dropbox profiles here." Foreground="{DynamicResource TextSecondaryBrush}"/>
+        </StackPanel>
+    </Border>
+    
+</UserControl>

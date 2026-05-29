@@ -1,0 +1,13 @@
+<UserControl xmlns="https://github.com/avaloniaui"
+             xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+             x:Class="CelestiCloud.GUI.Views.JobsView">
+    
+    <!-- Changed Grid to Border to support the Padding property -->
+    <Border Background="{DynamicResource ContentBackgroundBrush}" Padding="20">
+        <StackPanel Spacing="10">
+            <TextBlock Text="Jobs Management" FontSize="24" FontWeight="Bold" Foreground="{DynamicResource TextPrimaryBrush}"/>
+            <TextBlock Text="Your detailed progress panels, list of saved tasks, and creation drawer will go here." Foreground="{DynamicResource TextSecondaryBrush}"/>
+        </StackPanel>
+    </Border>
+    
+</UserControl>
