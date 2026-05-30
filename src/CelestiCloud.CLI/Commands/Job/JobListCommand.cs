@@ -2,6 +2,7 @@
 using System.Linq;
 using System.Threading.Tasks;
 using CelestiCloud.Core.Config;
+using CelestiCloud.Core.Jobs;
 using Spectre.Console;
 using Spectre.Console.Cli;
 
@@ -40,8 +41,8 @@ public class JobListCommand : AsyncCommand<EmptyCommandSettings>
             string accountDisplay = (accountsMap.TryGetValue(job.TargetAccountId, out var email) ? email : "Unknown Account");
 
             // Check lock files to determine active execution status [3]
-            string lockPath = Path.Combine(configManager.GetAppDataPath(), "jobs", $"{job.Id}.lock");
-            string status = File.Exists(lockPath) ? "[green]Active / Running[/]" : "[grey]Idle[/]";
+            bool isRunning = JobLockManager.IsJobRunning(job.Id, configManager.GetAppDataPath());
+            string status = isRunning ? "[green]Active / Running[/]" : "[grey]Idle[/]";
 
             table.AddRow(
                 job.Id,

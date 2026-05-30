@@ -53,6 +53,8 @@ public abstract class JobBase
         }
         finally
         {
+            JobLockManager.ReleaseLock(Config.Id, AppDataPath);
+
             lock (_lock)
             {
                 IsRunning = false;
@@ -67,6 +69,7 @@ public abstract class JobBase
     /// </summary>
     public Task StopAsync()
     {
+        JobLockManager.ReleaseLock(Config.Id, AppDataPath);
         lock (_lock)
         {
             _cts?.Cancel();
