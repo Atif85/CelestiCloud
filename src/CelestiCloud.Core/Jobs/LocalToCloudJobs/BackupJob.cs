@@ -4,13 +4,14 @@ using CelestiCloud.Core.Providers;
 using System;
 using System.Collections.Generic;
 using System.Text;
+using System.Threading.RateLimiting;
 
 namespace CelestiCloud.Core.Jobs.LocalToCloudJobs;
 
 public class BackupJob : LocalToCloudJobBase
 {
-    public BackupJob(JobConfig config, ICloudProvider provider, string appDataPath, IJobLogger logger)
-        : base(config, provider, appDataPath, logger) { }
+    public BackupJob(JobConfig config, ICloudProvider provider, string appDataPath, RateLimiter? limiter, IJobLogger logger)
+        : base(config, provider, appDataPath, limiter, logger) { }
 
     protected override bool AllowDeletions => false;
 }

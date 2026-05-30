@@ -1,6 +1,7 @@
 ﻿using Avalonia;
 using Avalonia.Styling;
 using CelestiCloud.Core.Config;
+using CelestiCloud.Core.Jobs;
 using CelestiCloud.Core.Models;
 using CommunityToolkit.Mvvm.ComponentModel;
 using System.Collections.ObjectModel;
@@ -10,6 +11,7 @@ namespace CelestiCloud.GUI.ViewModels;
 public partial class SettingsViewModel : ViewModelBase
 {
     private readonly ConfigManager _configManager;
+    private readonly JobEngine _syncEngine;
     private readonly AppSettings _currentSettings;
 
     public ObservableCollection<string> AvailableThemes { get; } = ["System", "Light", "Dark"];
@@ -20,18 +22,15 @@ public partial class SettingsViewModel : ViewModelBase
     [ObservableProperty]
     private decimal? _uploadLimitKbps;
 
-    [ObservableProperty]
-    private decimal? _downloadLimitKbps;
-
-    public SettingsViewModel(ConfigManager configManager)
+    public SettingsViewModel(ConfigManager configManager, JobEngine syncEngine)
     {
         _configManager = configManager;
+        _syncEngine = syncEngine;
         _currentSettings = _configManager.LoadSettings();
 
         // Initialize UI properties with saved values (bypassing the On...Changed triggers temporarily)
         _selectedTheme = _currentSettings.Theme;
         _uploadLimitKbps = _currentSettings.GlobalUploadLimitKbps;
-        _downloadLimitKbps = _currentSettings.GlobalDownloadLimitKbps;
 
         // Apply the loaded theme immediately on startup
         ApplyTheme(_selectedTheme);
@@ -47,14 +46,13 @@ public partial class SettingsViewModel : ViewModelBase
 
     partial void OnUploadLimitKbpsChanged(decimal? value)
     {
-        _currentSettings.GlobalUploadLimitKbps = (int)(value ?? 0);
+        int intValue = (int)(value ?? 0);
+        _currentSettings.GlobalUploadLimitKbps = intValue;
         _configManager.SaveSettings(_currentSettings);
-    }
 
-    partial void OnDownloadLimitKbpsChanged(decimal? value)
-    {
-        _currentSettings.GlobalDownloadLimitKbps = (int)(value ?? 0);
-        _configManager.SaveSettings(_currentSettings);
+        _syncEngine.UpdateUploadLimit(intValue);
+
+
     }
 
     private void ApplyTheme(string themeStr)

@@ -7,6 +7,7 @@ using CelestiCloud.Core.Logging;
 using CelestiCloud.Core.Providers;
 using Spectre.Console;
 using Spectre.Console.Cli;
+using System.Threading.RateLimiting;
 
 namespace CelestiCloud.CLI.Commands.Start;
 
@@ -21,7 +22,12 @@ public class JobAutoStartCommand : AsyncCommand<JobAutoStartSettings>
             ? new ConsoleLogger { MinimumLevel = LogLevel.Debug }
             : new FileLogger(configManager.GetAppDataPath(), "GlobalAutoStart");
 
-        var engine = new SyncEngine(configManager, providerFactory, logger);
+        var appSettings = configManager.LoadSettings();
+
+        int uploadLimit = appSettings.GlobalUploadLimitKbps;
+        RateLimiter? uploadLimiter = (uploadLimit > 0) ? BandwidthLimiterFactory.CreateLimiter(uploadLimit * 1024) : null;
+
+        var engine = new JobEngine(configManager, providerFactory, uploadLimiter, logger);
 
         var cts = new CancellationTokenSource();
         Console.CancelKeyPress += async (sender, e) =>

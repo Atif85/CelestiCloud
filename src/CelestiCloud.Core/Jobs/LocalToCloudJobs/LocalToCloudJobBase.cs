@@ -5,12 +5,14 @@ using CelestiCloud.Core.Models;
 using CelestiCloud.Core.Providers;
 using System.Collections.Concurrent;
 using System.Threading.Channels;
+using System.Threading.RateLimiting;
 
 namespace CelestiCloud.Core.Jobs;
 
 public abstract class LocalToCloudJobBase : JobBase
 {
     protected readonly ICloudProvider Provider;
+    protected readonly RateLimiter? Limiter;
     protected readonly IJobLogger Logger;
     protected abstract bool AllowDeletions { get; }
 
@@ -28,10 +30,11 @@ public abstract class LocalToCloudJobBase : JobBase
 
     private readonly Dictionary<string, string> _folderNameCache = new(StringComparer.OrdinalIgnoreCase);
 
-    protected LocalToCloudJobBase(JobConfig config, ICloudProvider provider, string appDataPath, IJobLogger logger)
+    protected LocalToCloudJobBase(JobConfig config, ICloudProvider provider, string appDataPath, RateLimiter? limiter, IJobLogger logger)
         : base(config, appDataPath)
     {
         Provider = provider ?? throw new ArgumentNullException(nameof(provider));
+        Limiter = limiter;
         Logger = logger;
         _ignoreFilter = new(config.IgnorePatterns);
 
@@ -577,7 +580,7 @@ public abstract class LocalToCloudJobBase : JobBase
                         FileShare.ReadWrite | FileShare.Delete);
 
                     // TODO For now, limiter is null (unthrottled).
-                    await using var throttledStream = new ThrottledStream(rawFileStream, limiter: null);
+                    await using var throttledStream = new ThrottledStream(rawFileStream, Limiter);
 
                     await Provider.UploadFileAsync(throttledStream, remotePath, progressReporter, cancellationToken);
                     InvalidateRemoteDirectoryCache(remotePath);

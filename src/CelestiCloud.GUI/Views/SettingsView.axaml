@@ -50,21 +50,6 @@
                                    HorizontalAlignment="Left"/>
                 </Grid>
 
-                <!-- Download Limit -->
-                <Grid ColumnDefinitions="250, *">
-                    <StackPanel Grid.Column="0">
-                        <TextBlock Text="Max Download Speed (KB/s)" FontWeight="Medium" Foreground="{DynamicResource TextPrimaryBrush}"/>
-                        <TextBlock Text="Set to 0 for unlimited speed." FontSize="12" Foreground="{DynamicResource TextSecondaryBrush}" Margin="0,4,0,0"/>
-                    </StackPanel>
-
-                    <NumericUpDown Grid.Column="1" 
-                                   Width="200"
-                                   Minimum="0" 
-                                   Maximum="999999"
-                                   Value="{Binding DownloadLimitKbps}" 
-                                   FormatString="0 KB/s"
-                                   HorizontalAlignment="Left"/>
-                </Grid>
             </StackPanel>
 
         </StackPanel>

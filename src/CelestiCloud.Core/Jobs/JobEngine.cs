@@ -1,25 +1,29 @@
 ﻿using CelestiCloud.Core.Config;
+using CelestiCloud.Core.IO;
 using CelestiCloud.Core.Jobs.LocalToCloudJobs;
 using CelestiCloud.Core.Logging;
 using CelestiCloud.Core.Models;
 using CelestiCloud.Core.Providers;
 using System.Collections.Concurrent;
+using System.Threading.RateLimiting;
 
 namespace CelestiCloud.Core.Jobs;
 
-public class SyncEngine
+public class JobEngine
 {
     private readonly ConfigManager _configManager;
     private readonly ProviderFactory _providerFactory;
+    private RateLimiter? _uploadLimiter;
     private readonly IJobLogger _logger;
 
     // Tracks currently executing jobs in memory: JobId -> JobInstance
     private readonly ConcurrentDictionary<string, JobBase> _activeJobs = new();
 
-    public SyncEngine(ConfigManager configManager, ProviderFactory providerFactory, IJobLogger logger)
+    public JobEngine(ConfigManager configManager, ProviderFactory providerFactory, RateLimiter? uploadLimiter, IJobLogger logger)
     {
         _configManager = configManager ?? throw new ArgumentNullException(nameof(configManager));
         _providerFactory = providerFactory ?? throw new ArgumentNullException(nameof(providerFactory));
+        _uploadLimiter = uploadLimiter;
         _logger = logger ?? throw new ArgumentNullException(nameof(logger));
     }
 
@@ -56,8 +60,8 @@ public class SyncEngine
         // Instantiate the correct concrete Job class
         JobBase jobInstance = config.JobType switch
         {
-            JobType.Sync => new SyncJob(config, provider, _configManager.GetAppDataPath(), _logger),
-            JobType.Backup => new BackupJob(config, provider, _configManager.GetAppDataPath(), _logger),
+            JobType.Sync => new SyncJob(config, provider, _configManager.GetAppDataPath(), _uploadLimiter, _logger),
+            JobType.Backup => new BackupJob(config, provider, _configManager.GetAppDataPath(), _uploadLimiter, _logger),
             _ => throw new NotSupportedException($"Unsupported Job Type: {config.JobType}")
         };
 
@@ -129,4 +133,20 @@ public class SyncEngine
         await Task.WhenAll(stopTasks);
         _activeJobs.Clear();
     }
+
+    public void UpdateUploadLimit(int uploadLimitKbps)
+    {
+        // Dispose the old one to free up resources
+        _uploadLimiter?.Dispose();
+
+        if (uploadLimitKbps > 0)
+        {
+            _uploadLimiter = BandwidthLimiterFactory.CreateLimiter(uploadLimitKbps * 1024);
+        }
+        else
+        {
+            _uploadLimiter = null;
+        }
+    }
+
 }

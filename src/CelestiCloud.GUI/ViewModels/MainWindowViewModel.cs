@@ -1,5 +1,6 @@
 ﻿using Avalonia.Controls;
 using CelestiCloud.Core.Config;
+using CelestiCloud.Core.Jobs;
 using CelestiCloud.Core.Providers;
 using CommunityToolkit.Mvvm.ComponentModel;
 using CommunityToolkit.Mvvm.Input;
@@ -24,6 +25,7 @@ public partial class MainWindowViewModel : ViewModelBase
 
     private readonly ConfigManager _configManager;
     private readonly ProviderFactory _providerFactory;
+    private readonly JobEngine _syncEngine;
 
     [ObservableProperty] private bool _isDashboardActive = true;
     [ObservableProperty] private bool _isJobsActive = false;
@@ -36,15 +38,16 @@ public partial class MainWindowViewModel : ViewModelBase
     public AccountsViewModel AccountsVm { get; }
     public SettingsViewModel SettingsVm { get; }
 
-    public MainWindowViewModel(ConfigManager configManager, ProviderFactory providerFactory)
+    public MainWindowViewModel(ConfigManager configManager, ProviderFactory providerFactory, JobEngine syncEngine)
     {
         _configManager = configManager;
         _providerFactory = providerFactory;
+        _syncEngine = syncEngine;
 
         DashboardVm = new DashboardViewModel();
         JobsVm = new JobsViewModel();
         AccountsVm = new AccountsViewModel(configManager, providerFactory);
-        SettingsVm = new SettingsViewModel(configManager);
+        SettingsVm = new SettingsViewModel(configManager, syncEngine);
     }
 
     /// <summary>

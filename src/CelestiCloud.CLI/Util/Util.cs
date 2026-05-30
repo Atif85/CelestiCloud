@@ -6,7 +6,7 @@ namespace CelestiCloud.CLI.Util;
 
 public static class ProgressRenderer
 {
-    public static IRenderable RenderDashboard(SyncEngine engine)
+    public static IRenderable RenderDashboard(JobEngine engine)
     {
         var activeJobs = engine.GetActiveJobs().ToList();
 

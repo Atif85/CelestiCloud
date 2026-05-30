@@ -10,6 +10,7 @@ using Spectre.Console.Cli;
 using System;
 using System.Collections.Generic;
 using System.Text;
+using System.Threading.RateLimiting;
 
 namespace CelestiCloud.CLI.Commands.Start;
 
@@ -19,13 +20,19 @@ public class JobStartCommand : AsyncCommand<JobStartSettings>
     {
         var configManager = new ConfigManager();
         var providerFactory = new ProviderFactory(configManager);
+        
 
         // Configure the Logger based on flags
         IJobLogger logger = settings.Debug
             ? new ConsoleLogger { MinimumLevel = LogLevel.Debug } // Print raw scrolling debug outputs
             : new FileLogger(configManager.GetAppDataPath(), settings.Identifier); // Silence console, log to file [5]
 
-        var engine = new SyncEngine(configManager, providerFactory, logger);
+        var appSettings = configManager.LoadSettings();
+
+        int uploadLimit = appSettings.GlobalUploadLimitKbps;
+        RateLimiter? limiter = (uploadLimit > 0) ? BandwidthLimiterFactory.CreateLimiter(uploadLimit * 1024) : null;
+
+        var engine = new JobEngine(configManager, providerFactory, limiter,  logger);
 
         // Setup termination hooks
         var cts = new CancellationTokenSource();
