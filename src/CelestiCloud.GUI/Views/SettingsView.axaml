@@ -1,13 +1,72 @@
+
 <UserControl xmlns="https://github.com/avaloniaui"
              xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
-             x:Class="CelestiCloud.GUI.Views.SettingsView">
-    
-    <!-- Changed Grid to Border to support the Padding property -->
-    <Border Background="{DynamicResource ContentBackgroundBrush}" Padding="20">
-        <StackPanel Spacing="10">
-            <TextBlock Text="Global Settings" FontSize="24" FontWeight="Bold" Foreground="{DynamicResource TextPrimaryBrush}"/>
-            <TextBlock Text="Adjust your global upload/download speeds, themes, and cache settings here." Foreground="{DynamicResource TextSecondaryBrush}"/>
+             xmlns:vm="using:CelestiCloud.GUI.ViewModels"
+             x:Class="CelestiCloud.GUI.Views.SettingsView"
+             x:DataType="vm:SettingsViewModel">
+
+    <Border Background="{DynamicResource ContentBackgroundBrush}" Padding="24">
+        <StackPanel Spacing="30">
+            
+            <TextBlock Text="Settings" FontSize="24" FontWeight="Bold" Foreground="{DynamicResource TextPrimaryBrush}"/>
+
+            <!-- APPEARANCE SECTION -->
+            <StackPanel Spacing="12">
+                <TextBlock Text="Appearance" FontSize="16" FontWeight="SemiBold" Foreground="{DynamicResource TextPrimaryBrush}"/>
+                <Separator Background="{DynamicResource DividerBrush}" Margin="0,0,0,10"/>
+                
+                <Grid ColumnDefinitions="250, *">
+                    <StackPanel Grid.Column="0">
+                        <TextBlock Text="App Theme" FontWeight="Medium" Foreground="{DynamicResource TextPrimaryBrush}"/>
+                        <TextBlock Text="Select your preferred color scheme." FontSize="12" Foreground="{DynamicResource TextSecondaryBrush}" Margin="0,4,0,0"/>
+                    </StackPanel>
+
+                    <ComboBox Grid.Column="1" 
+                              Width="200"
+                              ItemsSource="{Binding AvailableThemes}" 
+                              SelectedItem="{Binding SelectedTheme}">
+                    </ComboBox>
+                </Grid>
+            </StackPanel>
+
+            <!-- BANDWIDTH LIMITS SECTION -->
+            <StackPanel Spacing="12">
+                <TextBlock Text="Bandwidth Limits" FontSize="16" FontWeight="SemiBold" Foreground="{DynamicResource TextPrimaryBrush}"/>
+                <Separator Background="{DynamicResource DividerBrush}" Margin="0,0,0,10"/>
+                
+                <!-- Upload Limit -->
+                <Grid ColumnDefinitions="250, *" Margin="0,0,0,16">
+                    <StackPanel Grid.Column="0">
+                        <TextBlock Text="Max Upload Speed (KB/s)" FontWeight="Medium" Foreground="{DynamicResource TextPrimaryBrush}"/>
+                        <TextBlock Text="Set to 0 for unlimited speed." FontSize="12" Foreground="{DynamicResource TextSecondaryBrush}" Margin="0,4,0,0"/>
+                    </StackPanel>
+
+                    <NumericUpDown Grid.Column="1" 
+                                   Width="200"
+                                   Minimum="0" 
+                                   Maximum="999999"
+                                   Value="{Binding UploadLimitKbps}" 
+                                   FormatString="0 KB/s"
+                                   HorizontalAlignment="Left"/>
+                </Grid>
+
+                <!-- Download Limit -->
+                <Grid ColumnDefinitions="250, *">
+                    <StackPanel Grid.Column="0">
+                        <TextBlock Text="Max Download Speed (KB/s)" FontWeight="Medium" Foreground="{DynamicResource TextPrimaryBrush}"/>
+                        <TextBlock Text="Set to 0 for unlimited speed." FontSize="12" Foreground="{DynamicResource TextSecondaryBrush}" Margin="0,4,0,0"/>
+                    </StackPanel>
+
+                    <NumericUpDown Grid.Column="1" 
+                                   Width="200"
+                                   Minimum="0" 
+                                   Maximum="999999"
+                                   Value="{Binding DownloadLimitKbps}" 
+                                   FormatString="0 KB/s"
+                                   HorizontalAlignment="Left"/>
+                </Grid>
+            </StackPanel>
+
         </StackPanel>
     </Border>
-    
 </UserControl>
