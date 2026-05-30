@@ -51,7 +51,7 @@ public class SyncEngine
 
         // Connect the Provider using the Factory
         _logger.Log(LogLevel.Debug, $"Connecting account '{account.DisplayName}' for job '{config.Name}'...");
-        var provider = await _providerFactory.CreateProviderAsync(account);
+        var provider = await _providerFactory.GetOrCreateProviderAsync(account);
 
         // Instantiate the correct concrete Job class
         JobBase jobInstance = config.JobType switch
@@ -95,10 +95,19 @@ public class SyncEngine
     public async Task StartAutoStartJobsAsync()
     {
         _logger.Log(LogLevel.Debug, "Scanning for AutoStart jobs...");
-        var allJobs = _configManager.LoadAllJobs();
-        var autoStartJobs = allJobs.Where(j => j.AutoStart);
 
-        foreach (var job in autoStartJobs)
+        var allJobs = _configManager.LoadAllJobs();
+        var autoStartJobs = allJobs.Where(j => j.AutoStart).ToList();
+
+        if (autoStartJobs.Count == 0)
+        {
+            _logger.Log(LogLevel.Debug, "No AutoStart jobs found.");
+            return;
+        }
+
+        _logger.Log(LogLevel.Info, $"Booting {autoStartJobs.Count} jobs concurrently...");
+
+        var startTasks = autoStartJobs.Select(async job =>
         {
             try
             {
@@ -108,7 +117,9 @@ public class SyncEngine
             {
                 _logger.Log(LogLevel.Error, $"Failed to auto-start job '{job.Name}': {ex.Message}");
             }
-        }
+        });
+
+        await Task.WhenAll(startTasks);
     }
 
     public async Task StopAllAsync()

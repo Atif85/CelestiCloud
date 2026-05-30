@@ -306,8 +306,14 @@ public class GoogleDriveProvider : ICloudProvider
                 continue;
             }
 
-            // Slow path: Lock to prevent duplicate creations
+            // Lock to prevent duplicate creations
             await _folderLock.WaitAsync();
+
+            FileStream? crossProcessLock = null;
+            if (createIfMissing)
+            {
+                crossProcessLock = await AcquireCrossProcessLockAsync();
+            }
             try
             {
                 // Double-check cache inside the lock in case another thread just created it!
@@ -359,11 +365,40 @@ public class GoogleDriveProvider : ICloudProvider
             }
             finally
             {
+                if (crossProcessLock != null)
+                {
+                    await crossProcessLock.DisposeAsync();
+                }
                 _folderLock.Release();
             }
         }
 
         return currentParentId;
+    }
+
+    private async Task<FileStream> AcquireCrossProcessLockAsync()
+    {
+        Directory.CreateDirectory(_tokenDirectoryPath);
+        string lockPath = Path.Combine(_tokenDirectoryPath, "folder_resolve.lock");
+
+        int retries = 30; // Max wait of 30 seconds
+        while (retries > 0)
+        {
+            try
+            {
+                // FileMode.OpenOrCreate + FileAccess.ReadWrite + FileShare.None is 100% cross-platform.
+                // If another process is holding this handle, the OS will reject this call and throw IOException.
+                return new FileStream(lockPath, FileMode.OpenOrCreate, FileAccess.ReadWrite, FileShare.None);
+            }
+            catch (IOException)
+            {
+                // Wait 1 second before trying again
+                await Task.Delay(1000);
+                retries--;
+            }
+        }
+
+        throw new TimeoutException("Failed to acquire cross-process lock for folder resolution.");
     }
 
     private void InvalidateCache(string remotePath)
