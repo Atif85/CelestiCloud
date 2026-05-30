@@ -29,7 +29,7 @@ public class AccountAddCommand : AsyncCommand<AccountAddSettings>
         {
             Id = accountId,
             Provider = targetProvider,
-            DisplayName = "Pending Authentication"
+            DisplayName = "Authenticating..."
         };
 
         try

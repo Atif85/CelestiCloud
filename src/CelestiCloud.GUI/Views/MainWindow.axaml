@@ -35,7 +35,7 @@
         <Grid.ColumnDefinitions>
             <ColumnDefinition Width="{Binding SidebarWidth, Mode=TwoWay}" 
                               MinWidth="{Binding SidebarMinWidth}" 
-                              MaxWidth="350"/>
+                              MaxWidth="300"/>
             <ColumnDefinition Width="Auto" />
             <ColumnDefinition Width="*" />
         </Grid.ColumnDefinitions>

@@ -8,21 +8,22 @@ namespace CelestiCloud.GUI.ViewModels;
 
 public partial class MainWindowViewModel : ViewModelBase
 {
+    private const float SIDEBAR_MIN_WIDTH = 230;
     // The currently active view model showning on the content panel
     [ObservableProperty]
     private ViewModelBase _currentPage;
 
     // The width of the sidebar column.
     [ObservableProperty]
-    private GridLength _sidebarWidth = new(220);
+    private GridLength _sidebarWidth = new(SIDEBAR_MIN_WIDTH);
 
     [ObservableProperty]
-    private double _sidebarMinWidth = 250;
+    private double _sidebarMinWidth = SIDEBAR_MIN_WIDTH;
 
     [ObservableProperty]
     private bool _isSidebarCollapsed;
 
-    private double _preCollapseWidth = 220;
+    private double _preCollapseWidth = SIDEBAR_MIN_WIDTH;
 
     private readonly ConfigManager _configManager;
     private readonly ProviderFactory _providerFactory;
@@ -81,7 +82,7 @@ public partial class MainWindowViewModel : ViewModelBase
         else
         {
             // Restore back to the cached width, ensuring it is at least wider than compact mode
-            SidebarMinWidth = 250;
+            SidebarMinWidth = SIDEBAR_MIN_WIDTH;
             SidebarWidth = new GridLength(_preCollapseWidth > SidebarMinWidth ? _preCollapseWidth : SidebarMinWidth);
         }
     }
