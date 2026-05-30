@@ -21,6 +21,7 @@ public class JobConfig
     public List<string> IgnorePatterns { get; set; } = [];
     public bool AutoStart { get; set; } = false;
     public int MaxConcurrentTransfers { get; set; } = 4;
+    public int ReconciliationIntervalMinutes { get; set; } = 10;
 
     public override string ToString()
     {

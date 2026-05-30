@@ -20,6 +20,8 @@ public abstract class LocalToCloudJobBase : JobBase
     private Channel<FileEvent>? _eventChannel;
 
     private readonly ConcurrentDictionary<string, CancellationTokenSource> _debounceTicks = [];
+    private readonly ConcurrentDictionary<string, Dictionary<string, CloudFile>> _remoteDirectoryCache = new(StringComparer.OrdinalIgnoreCase);
+    private readonly SemaphoreSlim _cacheLock = new(1, 1);
 
     private int _filesFound;
     private int _filesProcessed;
@@ -70,17 +72,35 @@ public abstract class LocalToCloudJobBase : JobBase
             workerTasks.Add(ProcessEventChannelWorkerAsync(i, cancellationToken));
         }
 
-        // Perform the initial full reconciliation pass (Size + ModTime checks)
-        var initialScanTask = Task.Run(async () =>
+        var periodicReconciliationTask = Task.Run(async () =>
         {
-            Logger.Log(LogLevel.Debug, "Starting initial file reconciliation pass...");
-            await ReconcileAndUploadAsync(cancellationToken);
+            var interval = TimeSpan.FromMinutes(Config.ReconciliationIntervalMinutes > 0 ? Config.ReconciliationIntervalMinutes : 10);
 
-            if (AllowDeletions)
+            while (!cancellationToken.IsCancellationRequested)
             {
-                await CleanupOrphanedRemoteFilesAsync(cancellationToken);
+                Logger.Log(LogLevel.Debug, "Starting file reconciliation pass...");
+
+                // Clear the metadata cache before each periodic pass to fetch fresh remote data
+                _remoteDirectoryCache.Clear();
+
+                await ReconcileAndUploadAsync(cancellationToken);
+
+                if (AllowDeletions)
+                {
+                    await CleanupOrphanedRemoteFilesAsync(cancellationToken);
+                }
+
+                Logger.Log(LogLevel.Debug, $"Pass complete. Next full run scheduled in {interval.TotalMinutes} minutes.");
+
+                try
+                {
+                    await Task.Delay(interval, cancellationToken);
+                }
+                catch (TaskCanceledException)
+                {
+                    break;
+                }
             }
-            Logger.Log(LogLevel.Debug, "Initial pass complete.");
         }, cancellationToken);
 
         try
@@ -106,7 +126,7 @@ public abstract class LocalToCloudJobBase : JobBase
             _eventChannel.Writer.Complete();
 
             await Task.WhenAll(workerTasks);
-            await initialScanTask;
+            await periodicReconciliationTask;
             Logger.Log(LogLevel.Debug, "Job shut down cleanly.");
         }
     }
@@ -115,6 +135,11 @@ public abstract class LocalToCloudJobBase : JobBase
 
     private async Task ReconcileAndUploadAsync(CancellationToken cancellationToken)
     {
+        _filesFound = 0;
+        _filesProcessed = 0;
+        State.FilesFound = 0;
+        State.FilesProcessed = 0;
+
         foreach (string localDir in Config.LocalPaths)
         {
             cancellationToken.ThrowIfCancellationRequested();
@@ -123,7 +148,6 @@ public abstract class LocalToCloudJobBase : JobBase
             {
                 Logger.Log(LogLevel.Error, $"Local root directory is missing: '{localDir}'. Halting job to prevent accidental cloud deletions.");
 
-                // Gracefully stop the job immediately
                 _ = StopAsync();
                 return;
             }
@@ -160,50 +184,91 @@ public abstract class LocalToCloudJobBase : JobBase
     private async Task ReconcileFileAsync(string localPath, string remotePath, CancellationToken cancellationToken)
     {
         var localInfo = new FileInfo(localPath);
+        string parentRemoteFolder = Path.GetDirectoryName(remotePath)?.Replace('\\', '/') ?? "/";
+        string fileName = Path.GetFileName(remotePath);
 
-        // Check if file exists on the cloud
-        bool remoteExists = await Provider.FileExistsAsync(remotePath);
+        // Fetch directories using local cache
+        var directoryFiles = await GetCachedRemoteDirectoryAsync(parentRemoteFolder, cancellationToken);
 
-        if (!remoteExists)
+        // If file doesn't exist in our folder metadata cache, treat it as new [3]
+        if (!directoryFiles.TryGetValue(fileName, out var targetRemoteFile) || targetRemoteFile.IsFolder)
         {
             Logger.Log(LogLevel.Info, $"[Upload] New file: {localInfo.Name}");
             await UploadFileWithThrottlingAsync(localPath, remotePath, cancellationToken);
             return;
         }
 
-        // Fetch parent files to check the target file metadata
-        string parentRemoteFolder = Path.GetDirectoryName(remotePath)?.Replace('\\', '/') ?? "/";
-        var remoteFiles = await Provider.ListFilesAsync(parentRemoteFolder);
+        // Compare sizes and modification dates
+        bool sizeChanged = localInfo.Length != targetRemoteFile.Size;
+        bool isLocalNewer = false;
 
-        string targetName = Path.GetFileName(remotePath);
-        CloudFile? targetRemoteFile = remoteFiles.FirstOrDefault(f =>
-            f.Name.Equals(targetName, StringComparison.OrdinalIgnoreCase) && !f.IsFolder);
-
-        if (targetRemoteFile != null)
+        if (targetRemoteFile.ModifiedDate.HasValue)
         {
-            bool sizeChanged = localInfo.Length != targetRemoteFile.Size;
-            bool isLocalNewer = false;
+            long localTimeSec = new DateTimeOffset(localInfo.LastWriteTimeUtc).ToUnixTimeSeconds();
+            long remoteTimeSec = new DateTimeOffset(targetRemoteFile.ModifiedDate.Value, TimeSpan.Zero).ToUnixTimeSeconds();
 
-            if (targetRemoteFile.ModifiedDate.HasValue)
-            {
-                // Round to the nearest second to maintain reliability across different operating systems & APIs
-                long localTimeSec = new DateTimeOffset(localInfo.LastWriteTimeUtc).ToUnixTimeSeconds();
-                long remoteTimeSec = new DateTimeOffset(targetRemoteFile.ModifiedDate.Value, TimeSpan.Zero).ToUnixTimeSeconds();
+            isLocalNewer = localTimeSec > remoteTimeSec;
+        }
 
-                isLocalNewer = localTimeSec > remoteTimeSec;
-            }
-
-            if (sizeChanged || isLocalNewer)
-            {
-                Logger.Log(LogLevel.Info, $"[Update] Modified file: {localInfo.Name}");
-                await UploadFileWithThrottlingAsync(localPath, remotePath, cancellationToken);
-            }
-            else
-            {
-                Logger.Log(LogLevel.Debug, $"[Skip] File unchanged: {localInfo.Name}");
-            }
+        if (sizeChanged || isLocalNewer)
+        {
+            Logger.Log(LogLevel.Info, $"[Update] Modified file: {localInfo.Name}");
+            await UploadFileWithThrottlingAsync(localPath, remotePath, cancellationToken);
+        }
+        else
+        {
+            Logger.Log(LogLevel.Debug, $"[Skip] File unchanged: {localInfo.Name}");
         }
     }
+
+    private async Task<Dictionary<string, CloudFile>> GetCachedRemoteDirectoryAsync(string remoteFolderPath, CancellationToken cancellationToken)
+    {
+        if (_remoteDirectoryCache.TryGetValue(remoteFolderPath, out var cachedDir))
+        {
+            return cachedDir;
+        }
+
+        await _cacheLock.WaitAsync(cancellationToken);
+        try
+        {
+            if (_remoteDirectoryCache.TryGetValue(remoteFolderPath, out cachedDir))
+            {
+                return cachedDir;
+            }
+
+            // Verify folder exists before querying children
+            bool folderExists = await Provider.FileExistsAsync(remoteFolderPath);
+            var fileMap = new Dictionary<string, CloudFile>(StringComparer.OrdinalIgnoreCase);
+
+            if (folderExists)
+            {
+                var files = await Provider.ListFilesAsync(remoteFolderPath);
+                foreach (var file in files)
+                {
+                    fileMap[file.Name] = file;
+                }
+            }
+
+            _remoteDirectoryCache[remoteFolderPath] = fileMap;
+            return fileMap;
+        }
+        catch (Exception ex)
+        {
+            Logger.Log(LogLevel.Error, $"Failed to list remote directory '{remoteFolderPath}': {ex.Message}");
+            return new Dictionary<string, CloudFile>(StringComparer.OrdinalIgnoreCase);
+        }
+        finally
+        {
+            _cacheLock.Release();
+        }
+    }
+
+    private void InvalidateRemoteDirectoryCache(string remotePath)
+    {
+        string parentRemoteFolder = Path.GetDirectoryName(remotePath)?.Replace('\\', '/') ?? "/";
+        _remoteDirectoryCache.TryRemove(parentRemoteFolder, out _);
+    }
+
     private async Task CleanupOrphanedRemoteFilesAsync(CancellationToken cancellationToken)
     {
         foreach (string localDir in Config.LocalPaths)
@@ -211,7 +276,6 @@ public abstract class LocalToCloudJobBase : JobBase
             cancellationToken.ThrowIfCancellationRequested();
             if (!Directory.Exists(localDir)) continue;
 
-            // Calculate the root cloud target folder once (e.g., "/CelestiCloud/Downloads")
             string remoteFolderTarget = GetRemotePath(localDir, localDir);
 
             Logger.Log(LogLevel.Debug, $"Walking remote path '{remoteFolderTarget}' to clean offline deletions...");
@@ -232,21 +296,19 @@ public abstract class LocalToCloudJobBase : JobBase
     {
         ct.ThrowIfCancellationRequested();
 
-        var remoteItems = await Provider.ListFilesAsync(currentRemoteFolder);
+        var remoteItemsDict = await GetCachedRemoteDirectoryAsync(currentRemoteFolder, ct);
 
-        foreach (var item in remoteItems)
+        foreach (var kvp in remoteItemsDict)
         {
-            // Simple append to find the absolute remote path for this item
+            var item = kvp.Value;
             string itemRemotePath = $"{currentRemoteFolder.TrimEnd('/')}/{item.Name}";
 
             if (item.IsFolder)
             {
-                // Traverse subdirectories recursively, preserving the original absolute roots!
                 await WalkAndDeleteOrphansAsync(itemRemotePath, originalRemoteRoot, originalLocalRoot, ct);
             }
             else
             {
-                // Safe, absolute reverse-mapping using the unchanging originalRemoteRoot
                 string relativePath = itemRemotePath.Substring(originalRemoteRoot.Length).TrimStart('/');
                 string expectedLocalPath = Path.GetFullPath(Path.Combine(originalLocalRoot, relativePath));
 
@@ -254,11 +316,13 @@ public abstract class LocalToCloudJobBase : JobBase
                 {
                     Logger.Log(LogLevel.Info, $"[Cleanup] Removing orphaned remote file: {item.Name}");
                     await Provider.DeleteRemoteFileAsync(itemRemotePath, moveToTrash: true);
+                    InvalidateRemoteDirectoryCache(itemRemotePath);
                 }
                 else if (_ignoreFilter.ShouldIgnore(originalLocalRoot, expectedLocalPath))
                 {
                     Logger.Log(LogLevel.Info, $"[Cleanup] Removing newly ignored remote file: {item.Name}");
                     await Provider.DeleteRemoteFileAsync(itemRemotePath, moveToTrash: true);
+                    InvalidateRemoteDirectoryCache(itemRemotePath);
                 }
             }
         }
@@ -430,6 +494,8 @@ public abstract class LocalToCloudJobBase : JobBase
                         {
                             Logger.Log(LogLevel.Info, $"[Rename] {Path.GetFileName(fileEvent.OldLocalPath)} -> {Path.GetFileName(fileEvent.NewLocalPath)}");
                             await Provider.RenameRemoteFileAsync(oldRemotePath, remotePath);
+                            InvalidateRemoteDirectoryCache(oldRemotePath);
+                            InvalidateRemoteDirectoryCache(remotePath);
                         }
                         else
                         {
@@ -456,6 +522,7 @@ public abstract class LocalToCloudJobBase : JobBase
                     {
                         Logger.Log(LogLevel.Info, $"[Delete] Remote item: {Path.GetFileName(remotePath)}");
                         await Provider.DeleteRemoteFileAsync(remotePath, moveToTrash: true);
+                        InvalidateRemoteDirectoryCache(remotePath);
                     }
                 }
             }
@@ -513,6 +580,7 @@ public abstract class LocalToCloudJobBase : JobBase
                     await using var throttledStream = new ThrottledStream(rawFileStream, limiter: null);
 
                     await Provider.UploadFileAsync(throttledStream, remotePath, progressReporter, cancellationToken);
+                    InvalidateRemoteDirectoryCache(remotePath);
                     return;
                 }
                 catch (IOException) when (i < maxRetries - 1)
@@ -538,8 +606,6 @@ public abstract class LocalToCloudJobBase : JobBase
     {
         if (!_folderNameCache.TryGetValue(localRootPath, out string? folderName))
         {
-            // Fallback safety check
-            // Fallback safety check
             folderName = ResolveFolderName(localRootPath);
         }
 
