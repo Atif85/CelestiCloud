@@ -424,8 +424,23 @@ public abstract class LocalToCloudJobBase : JobBase
                     if (!_ignoreFilter.ShouldIgnore(fileEvent.LocalRootPath, fileEvent.NewLocalPath))
                     {
                         string oldRemotePath = GetRemotePath(fileEvent.OldLocalPath, fileEvent.LocalRootPath);
-                        Logger.Log(LogLevel.Info, $"[Rename] {Path.GetFileName(fileEvent.OldLocalPath)} -> {Path.GetFileName(fileEvent.NewLocalPath)}");
-                        await Provider.RenameRemoteFileAsync(oldRemotePath, remotePath);
+                        bool oldExistsOnCloud = await Provider.FileExistsAsync(oldRemotePath);
+
+                        if (oldExistsOnCloud)
+                        {
+                            Logger.Log(LogLevel.Info, $"[Rename] {Path.GetFileName(fileEvent.OldLocalPath)} -> {Path.GetFileName(fileEvent.NewLocalPath)}");
+                            await Provider.RenameRemoteFileAsync(oldRemotePath, remotePath);
+                        }
+                        else
+                        {
+                            // Fallback
+                            Logger.Log(LogLevel.Debug, $"[Rename Fallback] Old remote file not found: '{oldRemotePath}'. Uploading new file '{Path.GetFileName(fileEvent.NewLocalPath)}' instead.");
+
+                            if (File.Exists(fileEvent.NewLocalPath))
+                            {
+                                await ReconcileFileAsync(fileEvent.NewLocalPath, remotePath, cancellationToken);
+                            }
+                        }
                     }
                 }
                 else if (fileEvent.Type == FileEventType.Created || fileEvent.Type == FileEventType.Changed)

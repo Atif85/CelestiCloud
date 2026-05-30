@@ -35,7 +35,7 @@ public class AccountAddCommand : AsyncCommand<AccountAddSettings>
         try
         {
             // 2. Connect the provider (triggers standard browser OAuth workflow)
-            var provider = await providerFactory.CreateProviderAsync(account, ct);
+            var provider = await providerFactory.GetOrCreateProviderAsync(account, ct);
 
             AnsiConsole.MarkupLine("[yellow]Authentication successful. Querying user account information...[/]");
 

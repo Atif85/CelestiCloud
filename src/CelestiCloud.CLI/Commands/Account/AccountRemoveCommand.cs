@@ -3,8 +3,6 @@ using CelestiCloud.Core.Config;
 using CelestiCloud.Core.Providers;
 using Spectre.Console;
 using Spectre.Console.Cli;
-using System;
-using System.Threading.Tasks;
 
 namespace CelestiCloud.CLI.Commands.Account;
 
@@ -38,7 +36,7 @@ public class AccountRemoveCommand : AsyncCommand<AccountRemoveSettings>
                 try
                 {
                     // Create and connect provider to allow revocation
-                    var provider = await providerFactory.CreateProviderAsync(account);
+                    var provider = await providerFactory.GetOrCreateProviderAsync(account);
                     await provider.RevokeAccessAsync();
 
                     AnsiConsole.MarkupLine("[green]Successfully revoked OAuth permission tokens on Google's servers.[/]");
