@@ -186,4 +186,28 @@ public class ConfigManager
     }
 
     #endregion
+
+    #region App Settings
+    public AppSettings LoadSettings()
+    {
+        string filePath = Path.Combine(_appDataPath, "settings.json");
+        if (!File.Exists(filePath)) return new AppSettings(); // Return defaults
+
+        try
+        {
+            string json = File.ReadAllText(filePath);
+            return JsonSerializer.Deserialize<AppSettings>(json) ?? new AppSettings();
+        }
+        catch
+        {
+            return new AppSettings();
+        }
+    }
+
+    public void SaveSettings(AppSettings settings)
+    {
+        string filePath = Path.Combine(_appDataPath, "settings.json");
+        File.WriteAllText(filePath, JsonSerializer.Serialize(settings, _options));
+    }
+    #endregion
 }
