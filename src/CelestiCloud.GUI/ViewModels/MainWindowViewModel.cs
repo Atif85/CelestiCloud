@@ -1,4 +1,6 @@
 ﻿using Avalonia.Controls;
+using CelestiCloud.Core.Config;
+using CelestiCloud.Core.Providers;
 using CommunityToolkit.Mvvm.ComponentModel;
 using CommunityToolkit.Mvvm.Input;
 
@@ -22,14 +24,26 @@ public partial class MainWindowViewModel : ViewModelBase
 
     private double _preCollapseWidth = 220;
 
-    // Instantiated Page ViewModels
-    private readonly DashboardViewModel _dashboardVm = new();
-    private readonly JobsViewModel _jobsVm = new();
-    private readonly AccountsViewModel _accountsVm = new();
-    private readonly SettingsViewModel _settingsVm = new();
+    private readonly ConfigManager _configManager;
+    private readonly ProviderFactory _providerFactory;
 
-    public MainWindowViewModel()
+
+    // Instantiated Page ViewModels
+    private readonly DashboardViewModel _dashboardVm;
+    private readonly JobsViewModel _jobsVm;
+    private readonly AccountsViewModel _accountsVm;
+    private readonly SettingsViewModel _settingsVm;
+
+    public MainWindowViewModel(ConfigManager configManager, ProviderFactory providerFactory)
     {
+        _configManager = configManager;
+        _providerFactory = providerFactory;
+
+        _dashboardVm = new DashboardViewModel();
+        _jobsVm = new JobsViewModel();
+        _accountsVm = new AccountsViewModel(_configManager, _providerFactory); // Injected
+        _settingsVm = new SettingsViewModel();
+
         // Set the default startup screen
         _currentPage = _dashboardVm;
     }

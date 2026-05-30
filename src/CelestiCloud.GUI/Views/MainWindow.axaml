@@ -107,7 +107,7 @@
 
         <!-- COLUMN 1: THE RESIZABLE GRIP (GRID SPLITTER) -->
         <GridSplitter Grid.Column="1" 
-                      Width="4" 
+                      Width="3" 
                       ResizeBehavior="PreviousAndNext" 
                       Background="{DynamicResource DividerBrush}"
                       IsEnabled="{Binding !IsSidebarCollapsed}"
