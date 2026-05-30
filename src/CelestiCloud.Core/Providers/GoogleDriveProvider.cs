@@ -22,9 +22,9 @@ public class GoogleDriveProvider : ICloudProvider
 
     private const string FolderMimeType = "application/vnd.google-apps.folder";
     private static readonly string[] Scopes = 
-    {
+    [
         DriveService.Scope.DriveFile
-    };
+    ];
 
     public GoogleDriveProvider(string tokenDirectoryPath)
     {

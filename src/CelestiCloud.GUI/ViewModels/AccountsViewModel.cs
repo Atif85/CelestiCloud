@@ -46,16 +46,25 @@ public partial class AccountsViewModel : ViewModelBase
         _configManager = configManager;
         _providerFactory = providerFactory;
 
-        LoadAccounts();
+        LoadAccountsAsync();
     }
 
-    public void LoadAccounts()
+    public void LoadAccountsAsync()
     {
-        Accounts.Clear();
-        foreach (var account in _configManager.LoadAllAccounts())
+        Task.Run(() =>
         {
-            Accounts.Add(account);
-        }
+            var loadedAccounts = _configManager.LoadAllAccounts();
+
+            // Use the UI Dispatcher to safely update the ObservableCollection on the main thread
+            Dispatcher.UIThread.Post(() =>
+            {
+                Accounts.Clear();
+                foreach (var account in loadedAccounts)
+                {
+                    Accounts.Add(account);
+                }
+            });
+        });
     }
 
     partial void OnSelectedAccountChanged(AccountConfig? value)
@@ -118,7 +127,7 @@ public partial class AccountsViewModel : ViewModelBase
             account.DisplayName = userEmail;
             _configManager.SaveAccount(account);
 
-            LoadAccounts();
+            LoadAccountsAsync();
             IsAddAccountOpen = false;
         }
         catch (Exception ex)
@@ -147,7 +156,7 @@ public partial class AccountsViewModel : ViewModelBase
 
             _configManager.DeleteAccount(SelectedAccountDetails.Id);
 
-            LoadAccounts();
+            LoadAccountsAsync();
             CloseDetails();
         }
         catch (Exception ex)

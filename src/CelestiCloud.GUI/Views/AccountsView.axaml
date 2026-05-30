@@ -91,7 +91,7 @@
 
             <Grid>
                 <!-- CARD A: ADD ACCOUNT POPUP -->
-                <Border Width="450"
+                <Border Width="460"
                         HorizontalAlignment="Center"
                         VerticalAlignment="Center"
                         Background="{DynamicResource SidebarBackgroundBrush}"
@@ -142,7 +142,7 @@
                 </Border>
 
                 <!-- CARD B: ACCOUNT DETAILS POPUP -->
-                <Border Width="420"
+                <Border Width="460"
                         HorizontalAlignment="Center"
                         VerticalAlignment="Center"
                         Background="{DynamicResource SidebarBackgroundBrush}"

@@ -16,21 +16,6 @@
         Title="CelestiCloud"
         Background="{DynamicResource AppBackgroundBrush}">
 
-    <Window.DataTemplates>
-        <DataTemplate DataType="{x:Type vm:DashboardViewModel}">
-            <views:DashboardView />
-        </DataTemplate>
-        <DataTemplate DataType="{x:Type vm:JobsViewModel}">
-            <views:JobsView />
-        </DataTemplate>
-        <DataTemplate DataType="{x:Type vm:AccountsViewModel}">
-            <views:AccountsView />
-        </DataTemplate>
-        <DataTemplate DataType="{x:Type vm:SettingsViewModel}">
-            <views:SettingsView />
-        </DataTemplate>
-    </Window.DataTemplates>
-
     <Grid>
         <Grid.ColumnDefinitions>
             <ColumnDefinition Width="{Binding SidebarWidth, Mode=TwoWay}" 
@@ -114,7 +99,29 @@
                       IsVisible="{Binding !IsSidebarCollapsed}"/>
 
         <!-- COLUMN 2: ACTIVE CONTENT DISPLAY PANEL -->
-        <ContentControl Grid.Column="2" Content="{Binding CurrentPage}" />
+        <Grid Grid.Column="2">
+            
+            <!-- Dashboard -->
+            <Panel IsVisible="{Binding IsDashboardActive}">
+                <views:DashboardView DataContext="{Binding DashboardVm}" />
+            </Panel>
+
+            <!-- Jobs -->
+            <Panel IsVisible="{Binding IsJobsActive}">
+                <views:JobsView DataContext="{Binding JobsVm}" />
+            </Panel>
+
+            <!-- Accounts -->
+            <Panel IsVisible="{Binding IsAccountsActive}">
+                <views:AccountsView DataContext="{Binding AccountsVm}" />
+            </Panel>
+
+            <!-- Settings -->
+            <Panel IsVisible="{Binding IsSettingsActive}">
+                <views:SettingsView DataContext="{Binding SettingsVm}" />
+            </Panel>
+            
+        </Grid>
         
     </Grid>
 </Window>

@@ -9,9 +9,6 @@ namespace CelestiCloud.GUI.ViewModels;
 public partial class MainWindowViewModel : ViewModelBase
 {
     private const float SIDEBAR_MIN_WIDTH = 230;
-    // The currently active view model showning on the content panel
-    [ObservableProperty]
-    private ViewModelBase _currentPage;
 
     // The width of the sidebar column.
     [ObservableProperty]
@@ -28,25 +25,26 @@ public partial class MainWindowViewModel : ViewModelBase
     private readonly ConfigManager _configManager;
     private readonly ProviderFactory _providerFactory;
 
+    [ObservableProperty] private bool _isDashboardActive = true;
+    [ObservableProperty] private bool _isJobsActive = false;
+    [ObservableProperty] private bool _isAccountsActive = false;
+    [ObservableProperty] private bool _isSettingsActive = false;
 
     // Instantiated Page ViewModels
-    private readonly DashboardViewModel _dashboardVm;
-    private readonly JobsViewModel _jobsVm;
-    private readonly AccountsViewModel _accountsVm;
-    private readonly SettingsViewModel _settingsVm;
+    public DashboardViewModel DashboardVm { get; }
+    public JobsViewModel JobsVm { get; }
+    public AccountsViewModel AccountsVm { get; }
+    public SettingsViewModel SettingsVm { get; }
 
     public MainWindowViewModel(ConfigManager configManager, ProviderFactory providerFactory)
     {
         _configManager = configManager;
         _providerFactory = providerFactory;
 
-        _dashboardVm = new DashboardViewModel();
-        _jobsVm = new JobsViewModel();
-        _accountsVm = new AccountsViewModel(_configManager, _providerFactory); // Injected
-        _settingsVm = new SettingsViewModel();
-
-        // Set the default startup screen
-        _currentPage = _dashboardVm;
+        DashboardVm = new DashboardViewModel();
+        JobsVm = new JobsViewModel();
+        AccountsVm = new AccountsViewModel(configManager, providerFactory);
+        SettingsVm = new SettingsViewModel();
     }
 
     /// <summary>
@@ -55,15 +53,15 @@ public partial class MainWindowViewModel : ViewModelBase
     [RelayCommand]
     private void Navigate(string target)
     {
-        CurrentPage = target.ToLower() switch
-        {
-            "dashboard" => _dashboardVm,
-            "jobs" => _jobsVm,
-            "accounts" => _accountsVm,
-            "settings" => _settingsVm,
-            _ => _dashboardVm
-        };
+        // Instantly toggle visibility (0ms layout cost)
+        string targetLower = target.ToLower();
+
+        IsDashboardActive = targetLower == "dashboard";
+        IsJobsActive = targetLower == "jobs";
+        IsAccountsActive = targetLower == "accounts";
+        IsSettingsActive = targetLower == "settings";
     }
+
 
     /// <summary>
     /// Toggles the sidebar between its expanded/custom-resized size and a compact 60px icon strip.
