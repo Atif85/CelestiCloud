@@ -10,8 +10,8 @@ namespace CelestiCloud.Core.Jobs.LocalToCloudJobs;
 
 public class BackupJob : LocalToCloudJobBase
 {
-    public BackupJob(JobConfig config, ICloudProvider provider, string appDataPath, RateLimiter? limiter, IJobLogger logger)
-        : base(config, provider, appDataPath, limiter, logger) { }
+    public BackupJob(JobConfig config, ICloudProvider provider, string appDataPath, RateLimiter? limiter, int safeChunkSize, IJobLogger logger)
+        : base(config, provider, appDataPath, limiter, safeChunkSize, logger) { }
 
     protected override bool AllowDeletions => false;
 }

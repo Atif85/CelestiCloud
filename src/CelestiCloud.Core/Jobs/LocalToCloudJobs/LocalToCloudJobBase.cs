@@ -1,4 +1,5 @@
-﻿using CelestiCloud.Core.Filtering;
+﻿using CelestiCloud.Core.Config;
+using CelestiCloud.Core.Filtering;
 using CelestiCloud.Core.IO;
 using CelestiCloud.Core.Logging;
 using CelestiCloud.Core.Models;
@@ -14,6 +15,7 @@ public abstract class LocalToCloudJobBase : JobBase
     protected readonly ICloudProvider Provider;
     protected readonly RateLimiter? Limiter;
     protected readonly IJobLogger Logger;
+    private readonly int _safeChunkSize;
     protected abstract bool AllowDeletions { get; }
 
     private readonly IgnoreFilter _ignoreFilter;
@@ -30,11 +32,12 @@ public abstract class LocalToCloudJobBase : JobBase
 
     private readonly Dictionary<string, string> _folderNameCache = new(StringComparer.OrdinalIgnoreCase);
 
-    protected LocalToCloudJobBase(JobConfig config, ICloudProvider provider, string appDataPath, RateLimiter? limiter, IJobLogger logger)
+    protected LocalToCloudJobBase(JobConfig config, ICloudProvider provider, string appDataPath, RateLimiter? limiter, int safeChunkSize, IJobLogger logger)
         : base(config, appDataPath)
     {
         Provider = provider ?? throw new ArgumentNullException(nameof(provider));
         Limiter = limiter;
+        _safeChunkSize = safeChunkSize;
         Logger = logger;
         _ignoreFilter = new(config.IgnorePatterns);
 
@@ -596,8 +599,7 @@ public abstract class LocalToCloudJobBase : JobBase
                         FileAccess.Read,
                         FileShare.ReadWrite | FileShare.Delete);
 
-                    // TODO For now, limiter is null (unthrottled).
-                    await using var throttledStream = new ThrottledStream(rawFileStream, Limiter);
+                    await using var throttledStream = new ThrottledStream(rawFileStream, Limiter, _safeChunkSize);
 
                     await Provider.UploadFileAsync(throttledStream, remotePath, progressReporter, cancellationToken);
                     InvalidateRemoteDirectoryCache(remotePath);

@@ -1,5 +1,6 @@
 ﻿using Avalonia.Threading;
 using CelestiCloud.Core.Config;
+using CelestiCloud.Core.IO;
 using CelestiCloud.Core.Jobs;
 using CelestiCloud.GUI.Logging;
 using CommunityToolkit.Mvvm.ComponentModel;
@@ -23,10 +24,17 @@ public partial class DashboardViewModel : ViewModelBase
     private ObservableCollection<JobBase> _activeJobsList = [];
 
     [ObservableProperty]
+    private string _currentSpeedText = "0 B/s";
+
+    [ObservableProperty]
+    private string _totalUploadedText = "0 B";
+
+    [ObservableProperty]
     private string _liveLogText = string.Empty;
 
     [ObservableProperty]
     private bool _isLogViewerOpen;
+
     public ObservableCollection<LogMessage> LiveLogs { get; }
 
     public DashboardViewModel(ConfigManager configManager, JobEngine jobEngine, Logging.ObservableUiLogger uiLogger)
@@ -52,6 +60,9 @@ public partial class DashboardViewModel : ViewModelBase
         {
             ActiveJobsList.Add(job);
         }
+
+        CurrentSpeedText = FormatBytes(BandwidthMonitor.CurrentSpeedBps) + "/s";
+        TotalUploadedText = FormatBytes(BandwidthMonitor.TotalBytesUploaded);
     }
 
     [RelayCommand]
@@ -88,5 +99,17 @@ public partial class DashboardViewModel : ViewModelBase
                 Console.WriteLine(ex.Message);
             }
         }
+    }
+
+    private string FormatBytes(double bytes)
+    {
+        string[] suffixes = { "B", "KB", "MB", "GB", "TB" };
+        int i = 0;
+        while (bytes >= 1024 && i < suffixes.Length - 1)
+        {
+            bytes /= 1024;
+            i++;
+        }
+        return $"{bytes:F1} {suffixes[i]}";
     }
 }

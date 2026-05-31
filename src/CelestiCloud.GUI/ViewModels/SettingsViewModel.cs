@@ -51,8 +51,6 @@ public partial class SettingsViewModel : ViewModelBase
         _configManager.SaveSettings(_currentSettings);
 
         _jobEngine.UpdateUploadLimit(intValue);
-
-
     }
 
     private void ApplyTheme(string themeStr)

@@ -12,12 +12,14 @@ namespace CelestiCloud.Core.Jobs;
 public class JobEngine
 {
     private readonly ConfigManager _configManager;
-    private readonly ProviderFactory _providerFactory;
+    private readonly ProviderFactory _providerFactory; 
     private RateLimiter? _uploadLimiter;
     private readonly IJobLogger _logger;
 
     // Tracks currently executing jobs in memory: JobId -> JobInstance
     private readonly ConcurrentDictionary<string, JobBase> _activeJobs = new();
+
+    private int _safeChunkSize = 32 * 1024;
 
     public JobEngine(ConfigManager configManager, ProviderFactory providerFactory, RateLimiter? uploadLimiter, IJobLogger logger)
     {
@@ -25,6 +27,9 @@ public class JobEngine
         _providerFactory = providerFactory ?? throw new ArgumentNullException(nameof(providerFactory));
         _uploadLimiter = uploadLimiter;
         _logger = logger ?? throw new ArgumentNullException(nameof(logger));
+
+        var appSettings = configManager.LoadSettings();
+        UpdateChunkSize(appSettings.GlobalUploadLimitKbps);
     }
 
     public IEnumerable<JobBase> GetActiveJobs() => _activeJobs.Values;
@@ -60,8 +65,8 @@ public class JobEngine
         // Instantiate the correct concrete Job class
         JobBase jobInstance = config.JobType switch
         {
-            JobType.Sync => new SyncJob(config, provider, _configManager.GetAppDataPath(), _uploadLimiter, _logger),
-            JobType.Backup => new BackupJob(config, provider, _configManager.GetAppDataPath(), _uploadLimiter, _logger),
+            JobType.Sync => new SyncJob(config, provider, _configManager.GetAppDataPath(), _uploadLimiter, _safeChunkSize, _logger),
+            JobType.Backup => new BackupJob(config, provider, _configManager.GetAppDataPath(), _uploadLimiter, _safeChunkSize, _logger),
             _ => throw new NotSupportedException($"Unsupported Job Type: {config.JobType}")
         };
 
@@ -136,12 +141,13 @@ public class JobEngine
 
     public void UpdateUploadLimit(int uploadLimitKbps)
     {
-        // Dispose the old one to free up resources
         _uploadLimiter?.Dispose();
+        UpdateChunkSize(uploadLimitKbps);
 
         if (uploadLimitKbps > 0)
         {
             _uploadLimiter = BandwidthLimiterFactory.CreateLimiter(uploadLimitKbps * 1024);
+            _logger.Log(LogLevel.Info, $"Upload limit changed to {uploadLimitKbps} kbps");
         }
         else
         {
@@ -149,4 +155,16 @@ public class JobEngine
         }
     }
 
+    private void UpdateChunkSize(int uploadLimitKbps)
+    {
+        if (uploadLimitKbps > 0)
+        {
+            // Set safe chunk size to 1/10th of the limit per second, ensuring it is at least 4KB [5]
+            _safeChunkSize = Math.Max(4096, (uploadLimitKbps * 1024) / 10);
+        }
+        else
+        {
+            _safeChunkSize = 32 * 1024; // Default 32KB
+        }
+    }
 }

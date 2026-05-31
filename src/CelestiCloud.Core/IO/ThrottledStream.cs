@@ -52,7 +52,9 @@ public class ThrottledStream : Stream
     {
         if (_limiter == null)
         {
-            return _baseStream.Read(buffer, offset, count);
+            int readDirect = _baseStream.Read(buffer, offset, count);
+            if (readDirect > 0) BandwidthMonitor.RecordBytes(readDirect);
+            return readDirect;
         }
 
         int totalRead = 0;
@@ -66,6 +68,8 @@ public class ThrottledStream : Stream
 
             int read = _baseStream.Read(buffer, offset, toRead);
             if (read <= 0) break;
+
+            BandwidthMonitor.RecordBytes(read);
 
             totalRead += read;
             offset += read;
@@ -104,7 +108,9 @@ public class ThrottledStream : Stream
     {
         if (_limiter == null)
         {
-            return await _baseStream.ReadAsync(buffer, offset, count, cancellationToken);
+            int readDirect = await _baseStream.ReadAsync(buffer, offset, count, cancellationToken);
+            if (readDirect > 0) BandwidthMonitor.RecordBytes(readDirect);
+            return readDirect;
         }
 
         int totalRead = 0;
@@ -116,6 +122,8 @@ public class ThrottledStream : Stream
 
             int read = await _baseStream.ReadAsync(buffer, offset, toRead, cancellationToken);
             if (read <= 0) break;
+
+            BandwidthMonitor.RecordBytes(read);
 
             totalRead += read;
             offset += read;
@@ -154,7 +162,9 @@ public class ThrottledStream : Stream
     {
         if (_limiter == null)
         {
-            return await _baseStream.ReadAsync(buffer, cancellationToken);
+            int readDirect = await _baseStream.ReadAsync(buffer, cancellationToken);
+            if (readDirect > 0) BandwidthMonitor.RecordBytes(readDirect);
+            return readDirect;
         }
 
         int totalRead = 0;
@@ -171,6 +181,8 @@ public class ThrottledStream : Stream
             int read = await _baseStream.ReadAsync(slice, cancellationToken);
             if (read <= 0) break;
 
+            BandwidthMonitor.RecordBytes(read);
+
             totalRead += read;
             offset += read;
             remaining -= read;
@@ -178,6 +190,8 @@ public class ThrottledStream : Stream
 
         return totalRead;
     }
+
+
 
     public override async ValueTask WriteAsync(ReadOnlyMemory<byte> buffer, CancellationToken cancellationToken = default)
     {

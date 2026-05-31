@@ -10,15 +10,27 @@
             <Grid RowDefinitions="Auto, *">
                 
                 <!-- HEADER BAR -->
-                <Grid Grid.Row="0" ColumnDefinitions="*, Auto" Margin="0,0,0,20">
+                <Grid Grid.Row="0" ColumnDefinitions="*, Auto, Auto, Auto" Margin="0,0,0,20">
                     <StackPanel Grid.Column="0" Spacing="4">
                         <TextBlock Text="Dashboard" FontSize="24" FontWeight="Bold" Foreground="{DynamicResource TextPrimaryBrush}"/>
                         <TextBlock Text="Live active synchronizations" Foreground="{DynamicResource TextSecondaryBrush}"/>
                     </StackPanel>
 
-                    <StackPanel Grid.Column="1" Orientation="Horizontal" Spacing="10">
+                    <!-- Live Stats Display -->
+                    <StackPanel Grid.Column="1" Orientation="Horizontal" Spacing="20" VerticalAlignment="Center" Margin="0,0,24,0">
+                        <StackPanel>
+                            <TextBlock Text="Current Speed" FontSize="11" Foreground="{DynamicResource TextSecondaryBrush}" HorizontalAlignment="Right"/>
+                            <TextBlock Text="{Binding CurrentSpeedText}" FontSize="16" FontWeight="Bold" Foreground="MediumSeaGreen" HorizontalAlignment="Right"/>
+                        </StackPanel>
+                        <StackPanel>
+                            <TextBlock Text="Total Sent" FontSize="11" Foreground="{DynamicResource TextSecondaryBrush}" HorizontalAlignment="Right"/>
+                            <TextBlock Text="{Binding TotalUploadedText}" FontSize="16" FontWeight="Bold" Foreground="{DynamicResource TextPrimaryBrush}" HorizontalAlignment="Right"/>
+                        </StackPanel>
+                    </StackPanel>
+
+                    <StackPanel Grid.Column="2" Orientation="Horizontal" Spacing="10" VerticalAlignment="Center">
                         <Button Content="View Logs" Command="{Binding OpenLogViewerCommand}" Padding="16,8" Cursor="Hand"/>
-                        <Button Content="Stop All Jobs" Command="{Binding StopAllJobsCommand}" Background="#2E0C0C" Foreground="#FF6B6B" Padding="16,8" Cursor="Hand"/>
+                        <Button Content="Stop All" Command="{Binding StopAllJobsCommand}" Background="#2E0C0C" Foreground="#FF6B6B" Padding="16,8" Cursor="Hand"/>
                     </StackPanel>
                 </Grid>
 
