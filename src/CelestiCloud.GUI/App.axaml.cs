@@ -37,18 +37,18 @@ public partial class App : Application
             IJobLogger logger = new FileLogger(configManager.GetAppDataPath(), "CelestiCloud_GUI");
 
             // Create the Global Sync Engine 
-            var syncEngine = new JobEngine(configManager, providerFactory, limiter, logger);
+            var jobEngine = new JobEngine(configManager, providerFactory, limiter, logger);
 
             //_ = syncEngine.StartAutoStartJobsAsync();
 
             desktop.MainWindow = new MainWindow
             {
-                DataContext = new MainWindowViewModel(configManager, providerFactory , syncEngine),
+                DataContext = new MainWindowViewModel(configManager, providerFactory , jobEngine),
             };
 
             desktop.Exit += async (sender, args) =>
             {
-                await syncEngine.StopAllAsync();
+                await jobEngine.StopAllAsync();
             };
         }
 

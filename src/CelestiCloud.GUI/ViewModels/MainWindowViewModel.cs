@@ -25,7 +25,7 @@ public partial class MainWindowViewModel : ViewModelBase
 
     private readonly ConfigManager _configManager;
     private readonly ProviderFactory _providerFactory;
-    private readonly JobEngine _syncEngine;
+    private readonly JobEngine _jobEngine;
 
     [ObservableProperty] private bool _isDashboardActive = true;
     [ObservableProperty] private bool _isJobsActive = false;
@@ -38,16 +38,16 @@ public partial class MainWindowViewModel : ViewModelBase
     public AccountsViewModel AccountsVm { get; }
     public SettingsViewModel SettingsVm { get; }
 
-    public MainWindowViewModel(ConfigManager configManager, ProviderFactory providerFactory, JobEngine syncEngine)
+    public MainWindowViewModel(ConfigManager configManager, ProviderFactory providerFactory, JobEngine jobEngine)
     {
         _configManager = configManager;
         _providerFactory = providerFactory;
-        _syncEngine = syncEngine;
+        _jobEngine = jobEngine;
 
         DashboardVm = new DashboardViewModel();
-        JobsVm = new JobsViewModel();
+        JobsVm = new JobsViewModel(configManager, jobEngine);
         AccountsVm = new AccountsViewModel(configManager, providerFactory);
-        SettingsVm = new SettingsViewModel(configManager, syncEngine);
+        SettingsVm = new SettingsViewModel(configManager, jobEngine);
     }
 
     /// <summary>

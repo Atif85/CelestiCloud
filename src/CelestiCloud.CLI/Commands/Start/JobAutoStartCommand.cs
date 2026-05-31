@@ -77,7 +77,7 @@ public class JobAutoStartCommand : AsyncCommand<JobAutoStartSettings>
             return 1;
         }
 
-        AnsiConsole.MarkupLine("[green]SyncEngine stopped cleanly.[/]");
+        AnsiConsole.MarkupLine("[green]JobEngine stopped cleanly.[/]");
         return 0;
     }
 }

@@ -128,7 +128,7 @@ public class JobEngine
 
     public async Task StopAllAsync()
     {
-        _logger.Log(LogLevel.Debug, "Stopping all active jobs in SyncEngine...");
+        _logger.Log(LogLevel.Debug, "Stopping all active jobs in JobEngine...");
         var stopTasks = _activeJobs.Values.Select(job => job.StopAsync()).ToList();
         await Task.WhenAll(stopTasks);
         _activeJobs.Clear();

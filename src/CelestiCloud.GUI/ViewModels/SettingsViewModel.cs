@@ -11,7 +11,7 @@ namespace CelestiCloud.GUI.ViewModels;
 public partial class SettingsViewModel : ViewModelBase
 {
     private readonly ConfigManager _configManager;
-    private readonly JobEngine _syncEngine;
+    private readonly JobEngine _jobEngine;
     private readonly AppSettings _currentSettings;
 
     public ObservableCollection<string> AvailableThemes { get; } = ["System", "Light", "Dark"];
@@ -22,10 +22,10 @@ public partial class SettingsViewModel : ViewModelBase
     [ObservableProperty]
     private decimal? _uploadLimitKbps;
 
-    public SettingsViewModel(ConfigManager configManager, JobEngine syncEngine)
+    public SettingsViewModel(ConfigManager configManager, JobEngine jobEngine)
     {
         _configManager = configManager;
-        _syncEngine = syncEngine;
+        _jobEngine = jobEngine;
         _currentSettings = _configManager.LoadSettings();
 
         // Initialize UI properties with saved values (bypassing the On...Changed triggers temporarily)
@@ -50,7 +50,7 @@ public partial class SettingsViewModel : ViewModelBase
         _currentSettings.GlobalUploadLimitKbps = intValue;
         _configManager.SaveSettings(_currentSettings);
 
-        _syncEngine.UpdateUploadLimit(intValue);
+        _jobEngine.UpdateUploadLimit(intValue);
 
 
     }

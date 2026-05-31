@@ -20,8 +20,6 @@ public partial class AccountsViewModel : ViewModelBase
     [ObservableProperty]
     private ObservableCollection<AccountConfig> _accounts = [];
 
-    [ObservableProperty]
-    private AccountConfig? _selectedAccount;
 
     [ObservableProperty]
     [NotifyPropertyChangedFor(nameof(IsDimmerVisible))]
@@ -67,17 +65,13 @@ public partial class AccountsViewModel : ViewModelBase
         });
     }
 
-    partial void OnSelectedAccountChanged(AccountConfig? value)
+    [RelayCommand]
+    private void OpenAccountDetails(AccountConfig account)
     {
-        if (value == null) return;
+        if (account == null) return;
 
-        SelectedAccountDetails = value;
+        SelectedAccountDetails = account;
         IsDetailsOpen = true;
-
-        //Dispatcher.UIThread.Post(() =>
-        //{
-        //    SelectedAccount = null;
-        //});
     }
 
     [RelayCommand]
@@ -98,7 +92,6 @@ public partial class AccountsViewModel : ViewModelBase
     {
         IsDetailsOpen = false;
         SelectedAccountDetails = null;
-        SelectedAccount = null;
     }
 
     [RelayCommand]

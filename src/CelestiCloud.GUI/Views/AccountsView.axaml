@@ -25,47 +25,46 @@
                            Margin="0,0,0,20"/>
                 
                 <!-- Accounts Cards List -->
-                <ListBox Grid.Row="1"
-                         ItemsSource="{Binding Accounts}"
-                         SelectedItem="{Binding SelectedAccount, Mode=TwoWay}"
-                         Background="Transparent"
-                         BorderThickness="0">
+                <ScrollViewer Grid.Row="1">
+                    <ItemsControl ItemsSource="{Binding Accounts}">
+                        <ItemsControl.ItemTemplate>
+                            <DataTemplate x:DataType="models:AccountConfig">
+                                <!-- The Button acts as the card itself -->
+                                <Button Command="{Binding $parent[UserControl].((vm:AccountsViewModel)DataContext).OpenAccountDetailsCommand}" 
+                                        CommandParameter="{Binding}"
+                                        HorizontalAlignment="Stretch"
+                                        HorizontalContentAlignment="Stretch"
+                                        Background="{DynamicResource SidebarBackgroundBrush}"
+                                        BorderBrush="{DynamicResource DividerBrush}"
+                                        BorderThickness="1"
+                                        CornerRadius="8"
+                                        Padding="16,18"
+                                        Margin="0,0,0,10"
+                                        Cursor="Hand">
                     
-                    <ListBox.Styles>
-                        <Style Selector="ListBoxItem">
-                            <Setter Property="Padding" Value="16,18"/>
-                            <Setter Property="Margin" Value="0,0,0,10"/>
-                            <Setter Property="CornerRadius" Value="8"/>
-                            <Setter Property="Background" Value="{DynamicResource SidebarBackgroundBrush}"/>
-                            <Setter Property="BorderBrush" Value="{DynamicResource DividerBrush}"/>
-                            <Setter Property="BorderThickness" Value="1"/>
-                            <Setter Property="Cursor" Value="Hand"/>
-                        </Style>
-                    </ListBox.Styles>
-                    
-                    <ListBox.ItemTemplate>
-                        <DataTemplate x:DataType="models:AccountConfig">
-                            <Grid ColumnDefinitions="*, Auto">
-                                <StackPanel Grid.Column="0" VerticalAlignment="Center">
-                                    <TextBlock Text="{Binding DisplayName}" 
-                                               FontSize="16" 
-                                               FontWeight="SemiBold" 
-                                               Foreground="{DynamicResource TextPrimaryBrush}"/>
-                                    <TextBlock Text="{Binding Provider}" 
-                                               FontSize="12" 
-                                               Foreground="{DynamicResource TextSecondaryBrush}" 
-                                               Margin="0,4,0,0"/>
-                                </StackPanel>
-                                <TextBlock Grid.Column="1" 
-                                           Text="➔" 
-                                           FontSize="16" 
-                                           Foreground="{DynamicResource TextSecondaryBrush}" 
-                                           VerticalAlignment="Center"
-                                           Margin="0,0,10,0"/>
-                            </Grid>
-                        </DataTemplate>
-                    </ListBox.ItemTemplate>
-                </ListBox>
+                                    <Grid ColumnDefinitions="*, Auto">
+                                        <StackPanel Grid.Column="0" VerticalAlignment="Center">
+                                            <TextBlock Text="{Binding DisplayName}" 
+                                                       FontSize="16" 
+                                                       FontWeight="SemiBold" 
+                                                       Foreground="{DynamicResource TextPrimaryBrush}"/>
+                                            <TextBlock Text="{Binding Provider}" 
+                                                       FontSize="12" 
+                                                       Foreground="{DynamicResource TextSecondaryBrush}" 
+                                                       Margin="0,4,0,0"/>
+                                        </StackPanel>
+                                        <TextBlock Grid.Column="1" 
+                                                   Text="➔" 
+                                                   FontSize="16" 
+                                                   Foreground="{DynamicResource TextSecondaryBrush}" 
+                                                   VerticalAlignment="Center"
+                                                   Margin="0,0,10,0"/>
+                                    </Grid>
+                                </Button>
+                            </DataTemplate>
+                        </ItemsControl.ItemTemplate>
+                    </ItemsControl>
+                </ScrollViewer>
                 
                 <!-- Footer Action Panel -->
                 <StackPanel Grid.Row="2" 

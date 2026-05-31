@@ -1,8 +1,4 @@
-﻿using System;
-using System.Collections.Generic;
-using System.Text;
-
-namespace CelestiCloud.Core.Models;
+﻿namespace CelestiCloud.Core.Models;
 
 public enum JobType
 {
@@ -15,7 +11,7 @@ public class JobConfig
     public string Id { get; set; } = Guid.NewGuid().ToString();
     public string Name { get; set; } = string.Empty;
     public JobType JobType { get; set; } = JobType.Sync;
-    public string TargetAccountId { get; set; } = "";
+    public string TargetAccountId { get; set; } = string.Empty;
     public string RemoteRootPath { get; set; } = "/";
     public List<string> LocalPaths { get; set; } = [];
     public List<string> IgnorePatterns { get; set; } = [];
