@@ -42,7 +42,7 @@ public partial class App : Application
             // Create the Global Sync Engine 
             var jobEngine = new JobEngine(configManager, providerFactory, limiter, uiLogger);
 
-            //_ = syncEngine.StartAutoStartJobsAsync();
+            _ = jobEngine.StartAutoStartJobsAsync();
 
             desktop.MainWindow = new MainWindow
             {
