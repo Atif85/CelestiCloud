@@ -18,17 +18,12 @@
                         <ItemsControl.ItemTemplate>
                             <DataTemplate x:DataType="models:JobConfig">
                                 <!-- The Button acts as the card itself! -->
-                                <Button Command="{Binding $parent[UserControl].((vm:JobsViewModel)DataContext).OpenEditJobCommand}" 
+                                <Button Command="{Binding $parent[UserControl].((vm:JobsViewModel)DataContext).OpenJobDetailsCommand}"
                                         CommandParameter="{Binding}"
-                                        HorizontalAlignment="Stretch"
-                                        HorizontalContentAlignment="Stretch"
+                                        HorizontalAlignment="Stretch" HorizontalContentAlignment="Stretch"
                                         Background="{DynamicResource SidebarBackgroundBrush}"
-                                        BorderBrush="{DynamicResource DividerBrush}"
-                                        BorderThickness="1"
-                                        CornerRadius="8"
-                                        Padding="16,18"
-                                        Margin="0,0,0,10"
-                                        Cursor="Hand">
+                                        BorderBrush="{DynamicResource DividerBrush}" BorderThickness="1"
+                                        CornerRadius="8" Padding="16,18" Margin="0,0,0,10" Cursor="Hand">
                     
                                     <Grid ColumnDefinitions="*, Auto" Background="Transparent">
                                         <StackPanel Grid.Column="0" VerticalAlignment="Center">
@@ -39,7 +34,7 @@
                                                 <TextBlock Text="{Binding RemoteRootPath}" FontSize="12" Foreground="{DynamicResource TextSecondaryBrush}"/>
                                             </StackPanel>
                                         </StackPanel>
-                                        <TextBlock Grid.Column="1" Text="⚙️ Edit" FontSize="14" Foreground="{DynamicResource TextSecondaryBrush}" VerticalAlignment="Center"/>
+                                        <TextBlock Grid.Column="1" Text="➔" FontSize="16" Foreground="{DynamicResource TextSecondaryBrush}" VerticalAlignment="Center" Margin="0,0,10,0"/>
                                     </Grid>
                                 </Button>
                             </DataTemplate>
@@ -55,153 +50,228 @@
 
         <!-- LAYER 1: MODAL DIMMER OVERLAY -->
         <Border Background="#A0000000" IsVisible="{Binding IsDimmerVisible}" HorizontalAlignment="Stretch" VerticalAlignment="Stretch">
-
-            <!-- JOB EDITOR MODAL -->
-            <Border Width="550" MaxHeight="650"
-                    HorizontalAlignment="Center" VerticalAlignment="Center"
-                    Background="{DynamicResource SidebarBackgroundBrush}"
-                    BorderBrush="{DynamicResource DividerBrush}" BorderThickness="1"
-                    CornerRadius="12" BoxShadow="0 8 32 0 #40000000"
-                    IsVisible="{Binding IsModalOpen}">
-                
-                <Grid RowDefinitions="Auto, *, Auto">
-                    <!-- Header -->
-                    <StackPanel Grid.Row="0" Margin="24,24,24,16">
-                        <TextBlock Text="Job Configuration" FontSize="20" FontWeight="Bold" Foreground="{DynamicResource TextPrimaryBrush}"/>
-                        <Separator Background="{DynamicResource DividerBrush}" Margin="0,10,0,0"/>
-                    </StackPanel>
-
-                    <!-- Scrollable Form Content -->
-                    <ScrollViewer Grid.Row="1" Margin="24,0,24,0" Padding="0,0,16,0">
-                        <StackPanel Spacing="16" DataContext="{Binding EditingJob}">
+            <Grid>
+                <!-- LAYER 1A: VIEW DETAILS MODAL -->
+                <Border Width="550" MaxHeight="650"
+                        HorizontalAlignment="Center" VerticalAlignment="Center"
+                        Background="{DynamicResource SidebarBackgroundBrush}"
+                        BorderBrush="{DynamicResource DividerBrush}" BorderThickness="1"
+                        CornerRadius="12" BoxShadow="0 8 32 0 #40000000"
+                        IsVisible="{Binding IsViewModalOpen}">
+                    
+                    <Grid RowDefinitions="Auto, *, Auto">
+                        
+                        <!-- Header with Status Badge -->
+                        <Grid Grid.Row="0" ColumnDefinitions="*, Auto" Margin="24,24,24,16">
+                            <TextBlock Grid.Column="0" Text="{Binding SelectedJobDetails.Name}" FontSize="20" FontWeight="Bold" Foreground="{DynamicResource TextPrimaryBrush}" VerticalAlignment="Center"/>
                             
-                            <!-- Name & Type -->
-                            <Grid ColumnDefinitions="*, 150">
-                                <StackPanel Grid.Column="0" Margin="0,0,10,0">
-                                    <TextBlock Text="Job Name" FontWeight="SemiBold" Margin="0,0,0,4"/>
-                                    <TextBox Text="{Binding Name}" Watermark="e.g. Work Documents"/>
+                            <!-- Dynamic Status Badges -->
+                            <Border Grid.Column="1" Background="#1E4620" BorderBrush="#2E7D32" BorderThickness="1" CornerRadius="4" Padding="8,4" IsVisible="{Binding IsSelectedJobRunning}">
+                                <TextBlock Text="● Running" Foreground="#4CAF50" FontSize="12" FontWeight="Bold"/>
+                            </Border>
+                            <Border Grid.Column="1" Background="#333333" BorderBrush="#555555" BorderThickness="1" CornerRadius="4" Padding="8,4" IsVisible="{Binding !IsSelectedJobRunning}">
+                                <TextBlock Text="○ Stopped" Foreground="#AAAAAA" FontSize="12" FontWeight="Bold"/>
+                            </Border>
+                        </Grid>
+
+                        <!-- Scrollable Info -->
+                        <ScrollViewer Grid.Row="1" Margin="24,0,24,16">
+                            <StackPanel Spacing="16">
+                                <Separator Background="{DynamicResource DividerBrush}"/>
+                                
+                                <Grid ColumnDefinitions="150, *">
+                                    <TextBlock Grid.Column="0" Text="Type:" FontWeight="SemiBold" Foreground="{DynamicResource TextSecondaryBrush}"/>
+                                    <TextBlock Grid.Column="1" Text="{Binding SelectedJobDetails.JobType}"/>
+                                </Grid>
+                                
+                                <Grid ColumnDefinitions="150, *">
+                                    <TextBlock Grid.Column="0" Text="Cloud Target:" FontWeight="SemiBold" Foreground="{DynamicResource TextSecondaryBrush}"/>
+                                    <TextBlock Grid.Column="1" Text="{Binding SelectedJobDetails.RemoteRootPath}"/>
+                                </Grid>
+
+                                <Grid ColumnDefinitions="150, *">
+                                    <TextBlock Grid.Column="0" Text="Auto-Start:" FontWeight="SemiBold" Foreground="{DynamicResource TextSecondaryBrush}"/>
+                                    <TextBlock Grid.Column="1" Text="{Binding SelectedJobDetails.AutoStart}"/>
+                                </Grid>
+
+                                <Separator Background="{DynamicResource DividerBrush}"/>
+
+                                <TextBlock Text="Monitored Local Folders:" FontWeight="SemiBold" Foreground="{DynamicResource TextSecondaryBrush}"/>
+                                <ItemsControl ItemsSource="{Binding SelectedJobDetails.LocalPaths}">
+                                    <ItemsControl.ItemTemplate>
+                                        <DataTemplate>
+                                            <TextBlock Text="{Binding}" Margin="10,0,0,5" Foreground="{DynamicResource TextPrimaryBrush}"/>
+                                        </DataTemplate>
+                                    </ItemsControl.ItemTemplate>
+                                </ItemsControl>
+
+                                <TextBlock Text="Ignore Patterns:" FontWeight="SemiBold" Foreground="{DynamicResource TextSecondaryBrush}" Margin="0,10,0,0"/>
+                                <ItemsControl ItemsSource="{Binding SelectedJobDetails.IgnorePatterns}">
+                                    <ItemsControl.ItemTemplate>
+                                        <DataTemplate>
+                                            <TextBlock Text="{Binding}" Margin="10,0,0,5" Foreground="{DynamicResource TextPrimaryBrush}"/>
+                                        </DataTemplate>
+                                    </ItemsControl.ItemTemplate>
+                                </ItemsControl>
+                            </StackPanel>
+                        </ScrollViewer>
+
+                        <!-- Footer Actions -->
+                        <Border Grid.Row="2" Background="{DynamicResource AppBackgroundBrush}" BorderBrush="{DynamicResource DividerBrush}" BorderThickness="0,1,0,0" CornerRadius="0,0,12,12" Padding="24,16">
+                            <Grid ColumnDefinitions="*, Auto">
+                                
+                                <!-- Play/Stop Action -->
+                                <Button Grid.Column="0" HorizontalAlignment="Left" Command="{Binding ToggleSelectedJobStateCommand}">
+                                    <Panel>
+                                        <StackPanel Orientation="Horizontal" Spacing="8" IsVisible="{Binding !IsSelectedJobRunning}">
+                                            <TextBlock Text="▶" Foreground="#4CAF50"/>
+                                            <TextBlock Text="Start Job" FontWeight="Bold"/>
+                                        </StackPanel>
+                                        <StackPanel Orientation="Horizontal" Spacing="8" IsVisible="{Binding IsSelectedJobRunning}">
+                                            <TextBlock Text="⏹" Foreground="#FF5252"/>
+                                            <TextBlock Text="Stop Job" FontWeight="Bold"/>
+                                        </StackPanel>
+                                    </Panel>
+                                </Button>
+
+                                <StackPanel Grid.Column="1" Orientation="Horizontal" Spacing="10">
+                                    <Button Content="Edit" Command="{Binding OpenEditJobCommand}" Padding="16,8" Cursor="Hand"/>
+                                    <Button Content="Close" Command="{Binding CloseJobDetailsCommand}" Padding="16,8" Cursor="Hand"/>
                                 </StackPanel>
-                                <StackPanel Grid.Column="1">
-                                    <TextBlock Text="Job Type" FontWeight="SemiBold" Margin="0,0,0,4"/>
-                                    <ComboBox SelectedIndex="{Binding JobType}" HorizontalAlignment="Stretch">
-                                        <ComboBoxItem>Sync</ComboBoxItem>
-                                        <ComboBoxItem>Backup</ComboBoxItem>
+                            </Grid>
+                        </Border>
+                    </Grid>
+                </Border>
+
+                <!-- LAYER 1B: JOB EDITOR MODAL -->
+                <Border Width="550" MaxHeight="650"
+                        HorizontalAlignment="Center" VerticalAlignment="Center"
+                        Background="{DynamicResource SidebarBackgroundBrush}"
+                        BorderBrush="{DynamicResource DividerBrush}" BorderThickness="1"
+                        CornerRadius="12" BoxShadow="0 8 32 0 #40000000"
+                        IsVisible="{Binding IsEditModalOpen}">
+                    
+                    <Grid RowDefinitions="Auto, *, Auto">
+                        <StackPanel Grid.Row="0" Margin="24,24,24,16">
+                            <!-- Shows when creating a new job -->
+                            <TextBlock Text="Create New Job" 
+                                       IsVisible="{Binding IsCreatingNew}"
+                                       FontSize="20" FontWeight="Bold" Foreground="{DynamicResource TextPrimaryBrush}"/>
+    
+                            <!-- Shows when editing an existing job -->
+                            <TextBlock Text="Edit Job Configuration" 
+                                       IsVisible="{Binding !IsCreatingNew}"
+                                       FontSize="20" FontWeight="Bold" Foreground="{DynamicResource TextPrimaryBrush}"/>
+    
+                            <Separator Background="{DynamicResource DividerBrush}" Margin="0,10,0,0"/>
+                        </StackPanel>
+
+                        <!-- Same Scrollable Form Content As Before... -->
+                        <ScrollViewer Grid.Row="1" Margin="24,0,24,0" Padding="0,0,16,0">
+                            <StackPanel Spacing="16" DataContext="{Binding EditingJob}">
+                                
+                                <Grid ColumnDefinitions="*, 150">
+                                    <StackPanel Grid.Column="0" Margin="0,0,10,0">
+                                        <TextBlock Text="Job Name" FontWeight="SemiBold" Margin="0,0,0,4"/>
+                                        <TextBox Text="{Binding Name}" PlaceholderText="e.g. Work Documents"/>
+                                    </StackPanel>
+                                    <StackPanel Grid.Column="1">
+                                        <TextBlock Text="Job Type" FontWeight="SemiBold" Margin="0,0,0,4"/>
+                                        <ComboBox SelectedIndex="{Binding JobType}" HorizontalAlignment="Stretch">
+                                            <ComboBoxItem>Sync</ComboBoxItem>
+                                            <ComboBoxItem>Backup</ComboBoxItem>
+                                        </ComboBox>
+                                    </StackPanel>
+                                </Grid>
+
+                                <StackPanel>
+                                    <TextBlock Text="Target Account" FontWeight="SemiBold" Margin="0,0,0,4"/>
+                                    <ComboBox ItemsSource="{Binding $parent[UserControl].((vm:JobsViewModel)DataContext).AvailableAccounts}"
+                                              SelectedValue="{Binding TargetAccountId}" SelectedValueBinding="{Binding Id}" HorizontalAlignment="Stretch">
+                                        <ComboBox.ItemTemplate>
+                                            <DataTemplate>
+                                                <TextBlock Text="{Binding DisplayName}"/>
+                                            </DataTemplate>
+                                        </ComboBox.ItemTemplate>
                                     </ComboBox>
                                 </StackPanel>
-                            </Grid>
 
-                            <!-- Target Account -->
-                            <StackPanel>
-                                <TextBlock Text="Target Account" FontWeight="SemiBold" Margin="0,0,0,4"/>
-                                <ComboBox ItemsSource="{Binding $parent[UserControl].((vm:JobsViewModel)DataContext).AvailableAccounts}"
-                                          SelectedValue="{Binding TargetAccountId}"
-                                          SelectedValueBinding="{Binding Id}"
-                                          HorizontalAlignment="Stretch">
-                                    <ComboBox.ItemTemplate>
-                                        <DataTemplate>
-                                            <TextBlock Text="{Binding DisplayName}"/>
-                                        </DataTemplate>
-                                    </ComboBox.ItemTemplate>
-                                </ComboBox>
-                            </StackPanel>
-
-                            <!-- Remote Path & Concurrency -->
-                            <Grid ColumnDefinitions="*, 150">
-                                <StackPanel Grid.Column="0" Margin="0,0,10,0">
-                                    <TextBlock Text="Remote Cloud Path" FontWeight="SemiBold" Margin="0,0,0,4"/>
-                                    <TextBox Text="{Binding RemoteRootPath}" Watermark="e.g. /CelestiCloud/Docs"/>
-                                </StackPanel>
-                                <StackPanel Grid.Column="1">
-                                    <TextBlock Text="Max Concurrent" FontWeight="SemiBold" Margin="0,0,0,4"/>
-                                    <NumericUpDown Value="{Binding MaxConcurrentTransfers}" Minimum="1" Maximum="20"/>
-                                </StackPanel>
-                            </Grid>
-
-                            <ToggleSwitch IsChecked="{Binding AutoStart}" Content="Auto-start on launch" Margin="0,5"/>
-
-                            <Separator Background="{DynamicResource DividerBrush}"/>
-
-                            <!-- Local Paths List -->
-                            <StackPanel>
-                                <TextBlock Text="Local Folder Paths" FontWeight="SemiBold" Margin="0,0,0,8"/>
-                                
-                                <ItemsControl ItemsSource="{Binding $parent[UserControl].((vm:JobsViewModel)DataContext).EditingLocalPaths}">
-                                    <ItemsControl.ItemTemplate>
-                                        <DataTemplate>
-                                            <Grid ColumnDefinitions="*, Auto" Margin="0,0,0,6">
-                                                <TextBlock Grid.Column="0" Text="{Binding}" VerticalAlignment="Center" Foreground="{DynamicResource TextSecondaryBrush}"/>
-                                                <Button Grid.Column="1" Content="✕" Background="Transparent" Foreground="#FF6B6B" Cursor="Hand"
-                                                        Command="{Binding $parent[UserControl].((vm:JobsViewModel)DataContext).RemoveLocalPathCommand}"
-                                                        CommandParameter="{Binding}"/>
-                                            </Grid>
-                                        </DataTemplate>
-                                    </ItemsControl.ItemTemplate>
-                                </ItemsControl>
-
-                                <Grid ColumnDefinitions="*, Auto" Margin="0,4,0,0">
-                                    <TextBox Grid.Column="0" Watermark="Add a full path (e.g. C:\Docs)" 
-                                             Text="{Binding $parent[UserControl].((vm:JobsViewModel)DataContext).NewLocalPathInput}" Margin="0,0,8,0"/>
-                                    <Button Grid.Column="1" Content="Add" Command="{Binding $parent[UserControl].((vm:JobsViewModel)DataContext).AddLocalPathCommand}"/>
+                                <Grid ColumnDefinitions="*, 150">
+                                    <StackPanel Grid.Column="0" Margin="0,0,10,0">
+                                        <TextBlock Text="Remote Cloud Path" FontWeight="SemiBold" Margin="0,0,0,4"/>
+                                        <TextBox Text="{Binding RemoteRootPath}" PlaceholderText="e.g. /CelestiCloud/Docs"/>
+                                    </StackPanel>
+                                    <StackPanel Grid.Column="1">
+                                        <TextBlock Text="Max Concurrent" FontWeight="SemiBold" Margin="0,0,0,4"/>
+                                        <NumericUpDown Value="{Binding MaxConcurrentTransfers}" Minimum="1" Maximum="20"/>
+                                    </StackPanel>
                                 </Grid>
+
+                                <ToggleSwitch IsChecked="{Binding AutoStart}" Content="Auto-start on launch" Margin="0,5"/>
+                                <Separator Background="{DynamicResource DividerBrush}"/>
+
+                                <!-- Local Paths -->
+                                <StackPanel>
+                                    <TextBlock Text="Local Folder Paths" FontWeight="SemiBold" Margin="0,0,0,8"/>
+                                    <ItemsControl ItemsSource="{Binding $parent[UserControl].((vm:JobsViewModel)DataContext).EditingLocalPaths}">
+                                        <ItemsControl.ItemTemplate>
+                                            <DataTemplate>
+                                                <Grid ColumnDefinitions="*, Auto" Margin="0,0,0,6">
+                                                    <TextBlock Grid.Column="0" Text="{Binding}" VerticalAlignment="Center" Foreground="{DynamicResource TextSecondaryBrush}"/>
+                                                    <Button Grid.Column="1" Content="✕" Background="Transparent" Foreground="#FF6B6B" Cursor="Hand"
+                                                            Command="{Binding $parent[UserControl].((vm:JobsViewModel)DataContext).RemoveLocalPathCommand}" CommandParameter="{Binding}"/>
+                                                </Grid>
+                                            </DataTemplate>
+                                        </ItemsControl.ItemTemplate>
+                                    </ItemsControl>
+                                    <Grid ColumnDefinitions="*, Auto" Margin="0,4,0,0">
+                                        <TextBox Grid.Column="0" PlaceholderText="Add full path (e.g. C:\Docs)" Text="{Binding $parent[UserControl].((vm:JobsViewModel)DataContext).NewLocalPathInput}" Margin="0,0,8,0"/>
+                                        <Button Grid.Column="1" Content="Add" Command="{Binding $parent[UserControl].((vm:JobsViewModel)DataContext).AddLocalPathCommand}"/>
+                                    </Grid>
+                                </StackPanel>
+
+                                <Separator Background="{DynamicResource DividerBrush}"/>
+
+                                <!-- Ignore Patterns -->
+                                <StackPanel Margin="0,0,0,10">
+                                    <TextBlock Text="Ignore Patterns (.gitignore syntax)" FontWeight="SemiBold" Margin="0,0,0,8"/>
+                                    <ItemsControl ItemsSource="{Binding $parent[UserControl].((vm:JobsViewModel)DataContext).EditingIgnorePatterns}">
+                                        <ItemsControl.ItemTemplate>
+                                            <DataTemplate>
+                                                <Grid ColumnDefinitions="*, Auto" Margin="0,0,0,6">
+                                                    <TextBlock Grid.Column="0" Text="{Binding}" VerticalAlignment="Center" Foreground="{DynamicResource TextSecondaryBrush}"/>
+                                                    <Button Grid.Column="1" Content="✕" Background="Transparent" Foreground="#FF6B6B" Cursor="Hand"
+                                                            Command="{Binding $parent[UserControl].((vm:JobsViewModel)DataContext).RemoveIgnorePatternCommand}" CommandParameter="{Binding}"/>
+                                                </Grid>
+                                            </DataTemplate>
+                                        </ItemsControl.ItemTemplate>
+                                    </ItemsControl>
+                                    <Grid ColumnDefinitions="*, Auto" Margin="0,4,0,0">
+                                        <TextBox Grid.Column="0" PlaceholderText="Add pattern (e.g. *.tmp)" Text="{Binding $parent[UserControl].((vm:JobsViewModel)DataContext).NewIgnorePatternInput}" Margin="0,0,8,0"/>
+                                        <Button Grid.Column="1" Content="Add" Command="{Binding $parent[UserControl].((vm:JobsViewModel)DataContext).AddIgnorePatternCommand}"/>
+                                    </Grid>
+                                </StackPanel>
+
                             </StackPanel>
+                        </ScrollViewer>
 
-                            <Separator Background="{DynamicResource DividerBrush}"/>
-
-                            <!-- Ignore Patterns List -->
-                            <StackPanel Margin="0,0,0,10">
-                                <TextBlock Text="Ignore Patterns (.gitignore syntax)" FontWeight="SemiBold" Margin="0,0,0,8"/>
+                        <!-- Footer -->
+                        <Border Grid.Row="2" Background="{DynamicResource AppBackgroundBrush}" BorderBrush="{DynamicResource DividerBrush}" BorderThickness="0,1,0,0" CornerRadius="0,0,12,12" Padding="24,16">
+                            <Grid ColumnDefinitions="Auto, *">
                                 
-                                <ItemsControl ItemsSource="{Binding $parent[UserControl].((vm:JobsViewModel)DataContext).EditingIgnorePatterns}">
-                                    <ItemsControl.ItemTemplate>
-                                        <DataTemplate>
-                                            <Grid ColumnDefinitions="*, Auto" Margin="0,0,0,6">
-                                                <TextBlock Grid.Column="0" Text="{Binding}" VerticalAlignment="Center" Foreground="{DynamicResource TextSecondaryBrush}"/>
-                                                <Button Grid.Column="1" Content="✕" Background="Transparent" Foreground="#FF6B6B" Cursor="Hand"
-                                                        Command="{Binding $parent[UserControl].((vm:JobsViewModel)DataContext).RemoveIgnorePatternCommand}"
-                                                        CommandParameter="{Binding}"/>
-                                            </Grid>
-                                        </DataTemplate>
-                                    </ItemsControl.ItemTemplate>
-                                </ItemsControl>
+                                <Button Grid.Column="0" Content="Delete Job" IsVisible="{Binding !IsCreatingNew}"
+                                        Command="{Binding DeleteJobCommand}" Background="#2E0C0C" Foreground="#FF6B6B" BorderBrush="#5E1414" BorderThickness="1" Cursor="Hand"/>
 
-                                <Grid ColumnDefinitions="*, Auto" Margin="0,4,0,0">
-                                    <TextBox Grid.Column="0" Watermark="Add pattern (e.g. *.tmp, node_modules/)" 
-                                             Text="{Binding $parent[UserControl].((vm:JobsViewModel)DataContext).NewIgnorePatternInput}" Margin="0,0,8,0"/>
-                                    <Button Grid.Column="1" Content="Add" Command="{Binding $parent[UserControl].((vm:JobsViewModel)DataContext).AddIgnorePatternCommand}"/>
-                                </Grid>
-                            </StackPanel>
-
-                        </StackPanel>
-                    </ScrollViewer>
-
-                    <!-- Footer / Save Actions -->
-                    <Border Grid.Row="2" Background="{DynamicResource AppBackgroundBrush}" BorderBrush="{DynamicResource DividerBrush}" BorderThickness="0,1,0,0" CornerRadius="0,0,12,12" Padding="24,16">
-                        <Grid ColumnDefinitions="Auto, *">
-                            
-                            <!-- Delete Button (Only visible if Editing, not Creating) -->
-                            <Button Grid.Column="0" Content="Delete Job" 
-                                    IsVisible="{Binding !IsCreatingNew}"
-                                    Command="{Binding DeleteJobCommand}"
-                                    Background="#2E0C0C" Foreground="#FF6B6B" BorderBrush="#5E1414" BorderThickness="1" Cursor="Hand"/>
-
-                            <!-- Save / Cancel -->
-                            <StackPanel Grid.Column="1" Orientation="Horizontal" HorizontalAlignment="Right" Spacing="10">
-                                <Button Content="Cancel" Command="{Binding CloseModalCommand}" Padding="16,8" Cursor="Hand"/>
-                                <Button Content="Create Job" 
-                                        IsVisible="{Binding IsCreatingNew}"
-                                        Command="{Binding SaveJobCommand}" 
-                                        Background="#4CAF50" Foreground="White" Padding="16,8" Cursor="Hand" FontWeight="Bold"/>
-
-                                <!-- This button only shows when EDITING an existing job -->
-                                <Button Content="Save Changes" 
-                                        IsVisible="{Binding !IsCreatingNew}"
-                                        Command="{Binding SaveJobCommand}" 
-                                        Background="#4CAF50" Foreground="White" Padding="16,8" Cursor="Hand" FontWeight="Bold"/>
-                            </StackPanel>
-                        </Grid>
-                    </Border>
-                </Grid>
-            </Border>
+                                <StackPanel Grid.Column="1" Orientation="Horizontal" HorizontalAlignment="Right" Spacing="10">
+                                    <Button Content="Cancel" Command="{Binding CloseEditModalCommand}" Padding="16,8" Cursor="Hand"/>
+                                    <Button Content="Create Job" IsVisible="{Binding IsCreatingNew}" Command="{Binding SaveJobCommand}" Background="#4CAF50" Foreground="White" Padding="16,8" Cursor="Hand" FontWeight="Bold"/>
+                                    <Button Content="Save Changes" IsVisible="{Binding !IsCreatingNew}" Command="{Binding SaveJobCommand}" Background="#4CAF50" Foreground="White" Padding="16,8" Cursor="Hand" FontWeight="Bold"/>
+                                </StackPanel>
+                            </Grid>
+                        </Border>
+                    </Grid>
+                </Border>
+            </Grid>
         </Border>
     </Grid>
 </UserControl>

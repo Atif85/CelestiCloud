@@ -1,13 +1,115 @@
 <UserControl xmlns="https://github.com/avaloniaui"
              xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
-             x:Class="CelestiCloud.GUI.Views.DashboardView">
+             xmlns:vm="using:CelestiCloud.GUI.ViewModels"
+             xmlns:jobs="using:CelestiCloud.Core.Jobs"
+             x:Class="CelestiCloud.GUI.Views.DashboardView"
+             x:DataType="vm:DashboardViewModel">
     
-    <!-- Changed Grid to Border to support the Padding property -->
-    <Border Background="{DynamicResource ContentBackgroundBrush}" Padding="20">
-        <StackPanel Spacing="10">
-            <TextBlock Text="Dashboard" FontSize="24" FontWeight="Bold" Foreground="{DynamicResource TextPrimaryBrush}"/>
-            <TextBlock Text="A high-level view of your active tasks and bandwidth speeds will go here." Foreground="{DynamicResource TextSecondaryBrush}"/>
-        </StackPanel>
-    </Border>
-    
+    <Grid>
+        <Border Background="{DynamicResource ContentBackgroundBrush}" Padding="24">
+            <Grid RowDefinitions="Auto, *">
+                
+                <!-- HEADER BAR -->
+                <Grid Grid.Row="0" ColumnDefinitions="*, Auto" Margin="0,0,0,20">
+                    <StackPanel Grid.Column="0" Spacing="4">
+                        <TextBlock Text="Dashboard" FontSize="24" FontWeight="Bold" Foreground="{DynamicResource TextPrimaryBrush}"/>
+                        <TextBlock Text="Live active synchronizations" Foreground="{DynamicResource TextSecondaryBrush}"/>
+                    </StackPanel>
+
+                    <StackPanel Grid.Column="1" Orientation="Horizontal" Spacing="10">
+                        <Button Content="View Logs" Command="{Binding OpenLogViewerCommand}" Padding="16,8" Cursor="Hand"/>
+                        <Button Content="Stop All Jobs" Command="{Binding StopAllJobsCommand}" Background="#2E0C0C" Foreground="#FF6B6B" Padding="16,8" Cursor="Hand"/>
+                    </StackPanel>
+                </Grid>
+
+                <!-- ACTIVE JOBS LIST -->
+                <ScrollViewer Grid.Row="1">
+                    <ItemsControl ItemsSource="{Binding ActiveJobsList}">
+                        
+                        <!-- Empty State -->
+                        <ItemsControl.Styles>
+                            <Style Selector="ItemsControl:empty">
+                                <Setter Property="Template">
+                                    <ControlTemplate>
+                                        <TextBlock Text="No jobs are currently running." 
+                                                   Foreground="{DynamicResource TextSecondaryBrush}" 
+                                                   HorizontalAlignment="Center" 
+                                                   Margin="0,50,0,0"/>
+                                    </ControlTemplate>
+                                </Setter>
+                            </Style>
+                        </ItemsControl.Styles>
+
+                        <!-- Active Job Card -->
+                        <ItemsControl.ItemTemplate>
+                            <DataTemplate x:DataType="jobs:JobBase">
+                                <Border Background="{DynamicResource SidebarBackgroundBrush}" 
+                                        BorderBrush="{DynamicResource DividerBrush}" 
+                                        BorderThickness="1" 
+                                        CornerRadius="8" 
+                                        Padding="20" 
+                                        Margin="0,0,0,16">
+                                    <StackPanel Spacing="12">
+                                        
+                                        <!-- Job Title & Global Progress -->
+                                        <Grid ColumnDefinitions="*, Auto">
+                                            <TextBlock Grid.Column="0" Text="{Binding Config.Name}" FontSize="18" FontWeight="Bold" Foreground="{DynamicResource TextPrimaryBrush}"/>
+                                            <StackPanel Grid.Column="1" Orientation="Horizontal" Spacing="5">
+                                                <TextBlock Text="{Binding State.FilesProcessed}" Foreground="{DynamicResource TextPrimaryBrush}" FontWeight="Bold"/>
+                                                <TextBlock Text="/" Foreground="{DynamicResource TextSecondaryBrush}"/>
+                                                <TextBlock Text="{Binding State.FilesFound}" Foreground="{DynamicResource TextSecondaryBrush}"/>
+                                                <TextBlock Text="files processed" Foreground="{DynamicResource TextSecondaryBrush}"/>
+                                            </StackPanel>
+                                        </Grid>
+                                        
+                                        <Separator Background="{DynamicResource DividerBrush}"/>
+
+                                        <!-- Currently Uploading Files (ActiveTransfers Dictionary) -->
+                                        <!-- Because ActiveTransfers is a ConcurrentDictionary, we bind to it. -->
+                                        <ItemsControl ItemsSource="{Binding State.ActiveTransfers}">
+                                            <ItemsControl.ItemTemplate>
+                                                <!-- The Key is the filename, the Value is the progress double (0.0 to 1.0) -->
+                                                <DataTemplate>
+                                                    <Grid ColumnDefinitions="*, 200, 50" Margin="0,5">
+                                                        <TextBlock Grid.Column="0" Text="{Binding Key}" VerticalAlignment="Center" Foreground="{DynamicResource TextPrimaryBrush}" TextTrimming="CharacterEllipsis" Margin="0,0,10,0"/>
+                                                        <ProgressBar Grid.Column="1" Minimum="0" Maximum="1" Value="{Binding Value}" Height="8" CornerRadius="4" VerticalAlignment="Center"/>
+                                                        <TextBlock Grid.Column="2" Text="{Binding Value, StringFormat={}{0:P0}}" HorizontalAlignment="Right" VerticalAlignment="Center" Foreground="{DynamicResource TextSecondaryBrush}"/>
+                                                    </Grid>
+                                                </DataTemplate>
+                                            </ItemsControl.ItemTemplate>
+                                        </ItemsControl>
+
+                                    </StackPanel>
+                                </Border>
+                            </DataTemplate>
+                        </ItemsControl.ItemTemplate>
+                    </ItemsControl>
+                </ScrollViewer>
+            </Grid>
+        </Border>
+
+        <!-- LOG VIEWER MODAL OVERLAY -->
+        <Border Background="#A0000000" IsVisible="{Binding IsLogViewerOpen}">
+            <Border Width="700" Height="500" 
+                    Background="{DynamicResource ContentBackgroundBrush}" 
+                    BorderBrush="{DynamicResource DividerBrush}" BorderThickness="1" 
+                    CornerRadius="12" Padding="20"
+                    HorizontalAlignment="Center" VerticalAlignment="Center">
+                
+                <Grid RowDefinitions="Auto, *, Auto">
+                    <TextBlock Grid.Row="0" Text="Application Logs" FontSize="18" FontWeight="Bold" Margin="0,0,0,10"/>
+                    
+                    <TextBox Grid.Row="1" 
+                             Text="{Binding LiveLogText}" 
+                             IsReadOnly="True" 
+                             TextWrapping="Wrap" 
+                             AcceptsReturn="True"
+                             FontFamily="Consolas, Monospace"
+                             Background="{DynamicResource SidebarBackgroundBrush}"/>
+                    
+                    <Button Grid.Row="2" Content="Close" Command="{Binding CloseLogViewerCommand}" HorizontalAlignment="Right" Margin="0,15,0,0" Padding="20,8"/>
+                </Grid>
+            </Border>
+        </Border>
+    </Grid>
 </UserControl>

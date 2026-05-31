@@ -16,17 +16,25 @@ public partial class JobsViewModel : ViewModelBase
     private readonly ConfigManager _configManager;
     private readonly JobEngine _jobEngine;
 
+    private readonly DispatcherTimer _statusTimer;
+
     [ObservableProperty]
     private ObservableCollection<JobConfig> _jobs = [];
 
     [ObservableProperty]
     private ObservableCollection<AccountConfig> _availableAccounts = [];
 
-    // The job currently being created or edited
+    // --- VIEW STATE ---
+    [ObservableProperty]
+    private JobConfig? _selectedJobDetails;
+
+    [ObservableProperty]
+    private bool _isSelectedJobRunning;
+
+    // --- EDIT STATE ---
     [ObservableProperty]
     private JobConfig? _editingJob;
 
-    // Temporary collections for the UI to bind to while editing
     [ObservableProperty]
     private ObservableCollection<string> _editingLocalPaths = [];
 
@@ -39,20 +47,34 @@ public partial class JobsViewModel : ViewModelBase
     [ObservableProperty]
     private string _newIgnorePatternInput = string.Empty;
 
+    // --- MODAL VISIBILITY ---
     [ObservableProperty]
     [NotifyPropertyChangedFor(nameof(IsDimmerVisible))]
-    private bool _isModalOpen;
+    private bool _isViewModalOpen;
 
-    public bool IsDimmerVisible => IsModalOpen;
+    [ObservableProperty]
+    [NotifyPropertyChangedFor(nameof(IsDimmerVisible))]
+    private bool _isEditModalOpen;
 
-    // A flag so the UI knows whether to show "Create" or "Save Changes"
     [ObservableProperty]
     private bool _isCreatingNew;
+
+    public bool IsDimmerVisible => IsViewModalOpen || IsEditModalOpen;
 
     public JobsViewModel(ConfigManager configManager, JobEngine jobEngine)
     {
         _configManager = configManager;
         _jobEngine = jobEngine;
+
+        _statusTimer = new DispatcherTimer { Interval = TimeSpan.FromSeconds(3) };
+        _statusTimer.Tick += (s, e) =>
+        {
+            if (SelectedJobDetails != null)
+            {
+                IsSelectedJobRunning = _jobEngine.GetActiveJobs().Any(j => j.Config.Id == SelectedJobDetails.Id);
+            }
+        };
+        _statusTimer.Start();
 
         LoadData();
     }
@@ -69,8 +91,47 @@ public partial class JobsViewModel : ViewModelBase
 
             AvailableAccounts.Clear();
             foreach (var acc in loadedAccounts) AvailableAccounts.Add(acc);
+
+            if (SelectedJobDetails != null)
+            {
+                SelectedJobDetails = Jobs.FirstOrDefault(j => j.Id == SelectedJobDetails.Id) ?? SelectedJobDetails;
+            }
         });
     }
+
+    [RelayCommand]
+    private void OpenJobDetails(JobConfig job)
+    {
+        if (job == null) return;
+        SelectedJobDetails = job;
+        IsSelectedJobRunning = _jobEngine.GetActiveJobs().Any(j => j.Config.Id == job.Id);
+        IsViewModalOpen = true;
+    }
+
+    [RelayCommand]
+    private void CloseJobDetails()
+    {
+        IsViewModalOpen = false;
+        SelectedJobDetails = null;
+    }
+
+    [RelayCommand]
+    private async Task ToggleSelectedJobState()
+    {
+        if (SelectedJobDetails == null) return;
+
+        if (IsSelectedJobRunning)
+        {
+            await _jobEngine.StopJobAsync(SelectedJobDetails.Id);
+        }
+        else
+        {
+            await _jobEngine.StartJobAsync(SelectedJobDetails.Id);
+        }
+
+        IsSelectedJobRunning = !IsSelectedJobRunning; // Instant UI feedback
+    }
+
 
     [RelayCommand]
     private void OpenAddJob()
@@ -87,39 +148,48 @@ public partial class JobsViewModel : ViewModelBase
         // Add defaults
         EditingIgnorePatterns.Add("*.tmp");
 
-        IsModalOpen = true;
+        IsEditModalOpen = true;
     }
 
     [RelayCommand]
-    private void OpenEditJob(JobConfig job)
+    private void OpenEditJob()
     {
+        if (SelectedJobDetails == null) return;
+
         IsCreatingNew = false;
 
-        // Clone the job so we don't modify the list directly until "Save" is clicked
+        // Clone the job for editing
         EditingJob = new JobConfig
         {
-            Id = job.Id,
-            Name = job.Name,
-            JobType = job.JobType,
-            TargetAccountId = job.TargetAccountId,
-            RemoteRootPath = job.RemoteRootPath,
-            AutoStart = job.AutoStart,
-            MaxConcurrentTransfers = job.MaxConcurrentTransfers,
-            LocalPaths = [.. job.LocalPaths],
-            IgnorePatterns = [.. job.IgnorePatterns]
+            Id = SelectedJobDetails.Id,
+            Name = SelectedJobDetails.Name,
+            JobType = SelectedJobDetails.JobType,
+            TargetAccountId = SelectedJobDetails.TargetAccountId,
+            RemoteRootPath = SelectedJobDetails.RemoteRootPath,
+            AutoStart = SelectedJobDetails.AutoStart,
+            MaxConcurrentTransfers = SelectedJobDetails.MaxConcurrentTransfers,
+            LocalPaths = SelectedJobDetails.LocalPaths.ToList(),
+            IgnorePatterns = SelectedJobDetails.IgnorePatterns.ToList()
         };
 
-        EditingLocalPaths = new ObservableCollection<string>(job.LocalPaths);
-        EditingIgnorePatterns = new ObservableCollection<string>(job.IgnorePatterns);
+        EditingLocalPaths = new ObservableCollection<string>(SelectedJobDetails.LocalPaths);
+        EditingIgnorePatterns = new ObservableCollection<string>(SelectedJobDetails.IgnorePatterns);
 
-        IsModalOpen = true;
+        // Transition modals
+        IsViewModalOpen = false;
+        IsEditModalOpen = true;
     }
 
     [RelayCommand]
-    private void CloseModal()
+    private void CloseEditModal()
     {
-        IsModalOpen = false;
+        IsEditModalOpen = false;
         EditingJob = null;
+
+        if (!IsCreatingNew)
+        {
+            IsViewModalOpen = true;
+        }
     }
 
     [RelayCommand]
@@ -160,7 +230,8 @@ public partial class JobsViewModel : ViewModelBase
         _configManager.SaveJob(EditingJob);
 
         LoadData();
-        CloseModal();
+        IsEditModalOpen = false;
+        if (!IsCreatingNew) IsViewModalOpen = true;
     }
 
     [RelayCommand]
@@ -174,6 +245,7 @@ public partial class JobsViewModel : ViewModelBase
         _configManager.DeleteJob(EditingJob.Id);
 
         LoadData();
-        CloseModal();
+        IsEditModalOpen = false;
+        SelectedJobDetails = null;
     }
 }

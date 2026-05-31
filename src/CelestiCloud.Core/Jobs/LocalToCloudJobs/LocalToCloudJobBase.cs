@@ -77,34 +77,36 @@ public abstract class LocalToCloudJobBase : JobBase
 
         var periodicReconciliationTask = Task.Run(async () =>
         {
-            var interval = TimeSpan.FromMinutes(Config.ReconciliationIntervalMinutes > 0 ? Config.ReconciliationIntervalMinutes : 10);
-
-            while (!cancellationToken.IsCancellationRequested)
+            try
             {
-                Logger.Log(LogLevel.Debug, "Starting file reconciliation pass...");
+                var interval = TimeSpan.FromMinutes(Config.ReconciliationIntervalMinutes > 0 ? Config.ReconciliationIntervalMinutes : 10);
 
-                // Clear the metadata cache before each periodic pass to fetch fresh remote data
-                _remoteDirectoryCache.Clear();
-
-                await ReconcileAndUploadAsync(cancellationToken);
-
-                if (AllowDeletions)
+                while (!cancellationToken.IsCancellationRequested)
                 {
-                    await CleanupOrphanedRemoteFilesAsync(cancellationToken);
-                }
+                    Logger.Log(LogLevel.Debug, "Starting file reconciliation pass...");
+                    _remoteDirectoryCache.Clear();
 
-                Logger.Log(LogLevel.Debug, $"Pass complete. Next full run scheduled in {interval.TotalMinutes} minutes.");
+                    await ReconcileAndUploadAsync(cancellationToken);
 
-                try
-                {
+                    if (AllowDeletions)
+                    {
+                        await CleanupOrphanedRemoteFilesAsync(cancellationToken);
+                    }
+
+                    Logger.Log(LogLevel.Debug, $"Pass complete. Next full run scheduled in {interval.TotalMinutes} minutes.");
+
                     await Task.Delay(interval, cancellationToken);
                 }
-                catch (TaskCanceledException)
-                {
-                    break;
-                }
             }
-        }, cancellationToken);
+            catch (OperationCanceledException)
+            {
+                Logger.Log(LogLevel.Debug, "Periodic reconciliation loop stopped cleanly.");
+            }
+            catch (Exception ex)
+            {
+                Logger.Log(LogLevel.Error, $"Reconciliation loop encountered an error: {ex.Message}");
+            }
+        });
 
         try
         {
@@ -175,11 +177,15 @@ public abstract class LocalToCloudJobBase : JobBase
 
             await Parallel.ForEachAsync(eligibleFiles, parallelOptions, async (localFilePath, ct) =>
             {
-                string remoteFilePath = GetRemotePath(localFilePath, localDir);
-                await ReconcileFileAsync(localFilePath, remoteFilePath, ct);
+                try
+                {
+                    string remoteFilePath = GetRemotePath(localFilePath, localDir);
+                    await ReconcileFileAsync(localFilePath, remoteFilePath, ct);
 
-                Interlocked.Increment(ref _filesProcessed);
-                State.FilesProcessed = _filesProcessed;
+                    Interlocked.Increment(ref _filesProcessed);
+                    State.FilesProcessed = _filesProcessed;
+                }
+                catch (OperationCanceledException) { }
             });
         }
     }
@@ -477,62 +483,73 @@ public abstract class LocalToCloudJobBase : JobBase
 
         Logger.Log(LogLevel.Debug, $"Started Event Worker #{workerId}");
 
-        await foreach (var fileEvent in _eventChannel.Reader.ReadAllAsync(CancellationToken.None))
+        try
         {
-            if (cancellationToken.IsCancellationRequested) break;
-
-            try
+            await foreach (var fileEvent in _eventChannel.Reader.ReadAllAsync(CancellationToken.None))
             {
-                string remotePath = GetRemotePath(fileEvent.NewLocalPath, fileEvent.LocalRootPath);
+                if (cancellationToken.IsCancellationRequested) break;
 
-                if (fileEvent.Type == FileEventType.Renamed)
+                try
                 {
-                    // Verify the new file isn't meant to be ignored before renaming it on the cloud
-                    if (!_ignoreFilter.ShouldIgnore(fileEvent.LocalRootPath, fileEvent.NewLocalPath))
+                    string remotePath = GetRemotePath(fileEvent.NewLocalPath, fileEvent.LocalRootPath);
+
+                    if (fileEvent.Type == FileEventType.Renamed)
                     {
-                        string oldRemotePath = GetRemotePath(fileEvent.OldLocalPath, fileEvent.LocalRootPath);
-                        bool oldExistsOnCloud = await Provider.FileExistsAsync(oldRemotePath);
-
-                        if (oldExistsOnCloud)
+                        // Verify the new file isn't meant to be ignored before renaming it on the cloud
+                        if (!_ignoreFilter.ShouldIgnore(fileEvent.LocalRootPath, fileEvent.NewLocalPath))
                         {
-                            Logger.Log(LogLevel.Info, $"[Rename] {Path.GetFileName(fileEvent.OldLocalPath)} -> {Path.GetFileName(fileEvent.NewLocalPath)}");
-                            await Provider.RenameRemoteFileAsync(oldRemotePath, remotePath);
-                            InvalidateRemoteDirectoryCache(oldRemotePath);
-                            InvalidateRemoteDirectoryCache(remotePath);
-                        }
-                        else
-                        {
-                            // Fallback
-                            Logger.Log(LogLevel.Debug, $"[Rename Fallback] Old remote file not found: '{oldRemotePath}'. Uploading new file '{Path.GetFileName(fileEvent.NewLocalPath)}' instead.");
+                            string oldRemotePath = GetRemotePath(fileEvent.OldLocalPath, fileEvent.LocalRootPath);
+                            bool oldExistsOnCloud = await Provider.FileExistsAsync(oldRemotePath);
 
-                            if (File.Exists(fileEvent.NewLocalPath))
+                            if (oldExistsOnCloud)
                             {
-                                await ReconcileFileAsync(fileEvent.NewLocalPath, remotePath, cancellationToken);
+                                Logger.Log(LogLevel.Info, $"[Rename] {Path.GetFileName(fileEvent.OldLocalPath)} -> {Path.GetFileName(fileEvent.NewLocalPath)}");
+                                await Provider.RenameRemoteFileAsync(oldRemotePath, remotePath);
+                                InvalidateRemoteDirectoryCache(oldRemotePath);
+                                InvalidateRemoteDirectoryCache(remotePath);
+                            }
+                            else
+                            {
+                                // Fallback
+                                Logger.Log(LogLevel.Debug, $"[Rename Fallback] Old remote file not found: '{oldRemotePath}'. Uploading new file '{Path.GetFileName(fileEvent.NewLocalPath)}' instead.");
+
+                                if (File.Exists(fileEvent.NewLocalPath))
+                                {
+                                    await ReconcileFileAsync(fileEvent.NewLocalPath, remotePath, cancellationToken);
+                                }
                             }
                         }
                     }
-                }
-                else if (fileEvent.Type == FileEventType.Created || fileEvent.Type == FileEventType.Changed)
-                {
-                    if (File.Exists(fileEvent.NewLocalPath))
+                    else if (fileEvent.Type == FileEventType.Created || fileEvent.Type == FileEventType.Changed)
                     {
-                        await ReconcileFileAsync(fileEvent.NewLocalPath, remotePath, cancellationToken);
+                        if (File.Exists(fileEvent.NewLocalPath))
+                        {
+                            await ReconcileFileAsync(fileEvent.NewLocalPath, remotePath, cancellationToken);
+                        }
+                    }
+                    else if (fileEvent.Type == FileEventType.Deleted)
+                    {
+                        if (AllowDeletions)
+                        {
+                            Logger.Log(LogLevel.Info, $"[Delete] Remote item: {Path.GetFileName(remotePath)}");
+                            await Provider.DeleteRemoteFileAsync(remotePath, moveToTrash: true);
+                            InvalidateRemoteDirectoryCache(remotePath);
+                        }
                     }
                 }
-                else if (fileEvent.Type == FileEventType.Deleted)
+                catch (OperationCanceledException)
                 {
-                    if (AllowDeletions)
-                    {
-                        Logger.Log(LogLevel.Info, $"[Delete] Remote item: {Path.GetFileName(remotePath)}");
-                        await Provider.DeleteRemoteFileAsync(remotePath, moveToTrash: true);
-                        InvalidateRemoteDirectoryCache(remotePath);
-                    }
+                    throw;
+                }
+                catch (Exception ex)
+                {
+                    Logger.Log(LogLevel.Error, $"Error processing event for {fileEvent.NewLocalPath}: {ex.Message}");
                 }
             }
-            catch (Exception ex)
-            {
-                Logger.Log(LogLevel.Error, $"Error processing event for {fileEvent.NewLocalPath}: {ex.Message}");
-            }
+        }
+        catch (OperationCanceledException)
+        {
+            // Worker stopped cleanly
         }
     }
 

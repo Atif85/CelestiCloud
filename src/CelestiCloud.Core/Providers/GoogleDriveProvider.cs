@@ -141,6 +141,11 @@ public class GoogleDriveProvider : ICloudProvider
 
         if (response.Status == UploadStatus.Failed)
         {
+            if (response.Exception is OperationCanceledException || cancellationToken.IsCancellationRequested)
+            {
+                throw new OperationCanceledException("Upload was canceled by the user.", response.Exception, cancellationToken);
+            }
+
             throw new Exception($"Upload failed: {response.Exception?.Message}", response.Exception);
         }
 

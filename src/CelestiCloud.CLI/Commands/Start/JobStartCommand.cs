@@ -21,7 +21,6 @@ public class JobStartCommand : AsyncCommand<JobStartSettings>
         var configManager = new ConfigManager();
         var providerFactory = new ProviderFactory(configManager);
         
-
         // Configure the Logger based on flags
         IJobLogger logger = settings.Debug
             ? new ConsoleLogger { MinimumLevel = LogLevel.Debug } // Print raw scrolling debug outputs
