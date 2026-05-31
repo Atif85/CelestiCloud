@@ -9,14 +9,51 @@
         <local:ViewLocator/>
     </Application.DataTemplates>
 
-	<Application.Styles>
-		<FluentTheme />
-	</Application.Styles>
+    <Application.Styles>
+        <FluentTheme />
+    
+        <!-- DANGER BUTTON STYLE (Red) -->
+        <Style Selector="Button.danger">
+            <Setter Property="Background" Value="{DynamicResource DangerBackgroundBrush}"/>
+            <Setter Property="Foreground" Value="{DynamicResource DangerForegroundBrush}"/>
+            <Setter Property="BorderBrush" Value="{DynamicResource DangerBorderBrush}"/>
+            <Setter Property="BorderThickness" Value="1"/>
+            <Setter Property="CornerRadius" Value="6"/>
+        </Style>
+        <Style Selector="Button.danger:pointerover /template/ ContentPresenter">
+            <Setter Property="Background" Value="{DynamicResource DangerBackgroundHoverBrush}"/>
+            <Setter Property="Foreground" Value="{DynamicResource DangerForegroundBrush}"/>
+            <Setter Property="BorderBrush" Value="{DynamicResource DangerBorderBrush}"/>
+        </Style>
+        <Style Selector="Button.danger:pressed /template/ ContentPresenter">
+            <Setter Property="Background" Value="{DynamicResource DangerBackgroundPressedBrush}"/>
+            <Setter Property="Foreground" Value="{DynamicResource DangerForegroundBrush}"/>
+            <Setter Property="BorderBrush" Value="{DynamicResource DangerBorderBrush}"/>
+        </Style>
+
+        <!-- SUCCESS BUTTON STYLE (Green) -->
+        <Style Selector="Button.success">
+            <Setter Property="Background" Value="{DynamicResource SuccessBackgroundBrush}"/>
+            <Setter Property="Foreground" Value="{DynamicResource SuccessForegroundBrush}"/>
+            <Setter Property="BorderBrush" Value="{DynamicResource SuccessBorderBrush}"/>
+            <Setter Property="BorderThickness" Value="1"/>
+            <Setter Property="CornerRadius" Value="6"/>
+        </Style>
+        <Style Selector="Button.success:pointerover /template/ ContentPresenter">
+            <Setter Property="Background" Value="{DynamicResource SuccessBackgroundHoverBrush}"/>
+            <Setter Property="Foreground" Value="{DynamicResource SuccessForegroundBrush}"/>
+            <Setter Property="BorderBrush" Value="{DynamicResource SuccessBorderBrush}"/>
+        </Style>
+        <Style Selector="Button.success:pressed /template/ ContentPresenter">
+            <Setter Property="Background" Value="{DynamicResource SuccessBackgroundPressedBrush}"/>
+            <Setter Property="Foreground" Value="{DynamicResource SuccessForegroundBrush}"/>
+            <Setter Property="BorderBrush" Value="{DynamicResource SuccessBorderBrush}"/>
+        </Style>
+    </Application.Styles>
 
     <Application.Resources>
         <ResourceDictionary>
             <ResourceDictionary.ThemeDictionaries>
-                
                 <!-- DARK THEME PALETTE -->
                 <ResourceDictionary x:Key="Dark">
                     <SolidColorBrush x:Key="AppBackgroundBrush">#121212</SolidColorBrush>
@@ -29,6 +66,20 @@
 
                     <SolidColorBrush x:Key="ProgressBarTrackBrush">#2c2c2e</SolidColorBrush>    
                     <SolidColorBrush x:Key="ProgressBarIndicatorBrush">#10B981</SolidColorBrush> 
+
+                     <!-- Danger Brushes (Dark Palette - Subtle) -->
+                    <SolidColorBrush x:Key="DangerBackgroundBrush">#3D1313</SolidColorBrush>
+                    <SolidColorBrush x:Key="DangerBackgroundHoverBrush">#541A1A</SolidColorBrush>
+                    <SolidColorBrush x:Key="DangerBackgroundPressedBrush">#2E0C0C</SolidColorBrush>
+                    <SolidColorBrush x:Key="DangerForegroundBrush">#FFFFFF</SolidColorBrush>
+                    <SolidColorBrush x:Key="DangerBorderBrush">#6E2222</SolidColorBrush>
+                
+                    <!-- Success Brushes (Dark Palette - Subtle) -->
+                    <SolidColorBrush x:Key="SuccessBackgroundBrush">#2F5A3D</SolidColorBrush>
+                    <SolidColorBrush x:Key="SuccessBackgroundHoverBrush">#3D6B4A</SolidColorBrush>
+                    <SolidColorBrush x:Key="SuccessBackgroundPressedBrush">#1F4630</SolidColorBrush>
+                    <SolidColorBrush x:Key="SuccessForegroundBrush">#FFFFFF</SolidColorBrush>
+                    <SolidColorBrush x:Key="SuccessBorderBrush">#4A8C5C</SolidColorBrush>
                 </ResourceDictionary>
 
                 <!-- LIGHT THEME PALETTE -->
@@ -43,6 +94,20 @@
 
                     <SolidColorBrush x:Key="ProgressBarTrackBrush">#e5e7eb</SolidColorBrush>     
                     <SolidColorBrush x:Key="ProgressBarIndicatorBrush">#059669</SolidColorBrush>
+
+                    <!-- Danger Brushes (Light Palette - Subtle) -->
+                    <SolidColorBrush x:Key="DangerBackgroundBrush">#FCE8E8</SolidColorBrush>
+                    <SolidColorBrush x:Key="DangerBackgroundHoverBrush">#FAD2D2</SolidColorBrush>
+                    <SolidColorBrush x:Key="DangerBackgroundPressedBrush">#F7B5B5</SolidColorBrush>
+                    <SolidColorBrush x:Key="DangerForegroundBrush">#7F1D1D</SolidColorBrush>
+                    <SolidColorBrush x:Key="DangerBorderBrush">#FEB2B2</SolidColorBrush>
+                
+                    <!-- Success Brushes (Light Palette - Subtle) -->
+                    <SolidColorBrush x:Key="SuccessBackgroundBrush">#E6F4EA</SolidColorBrush>
+                    <SolidColorBrush x:Key="SuccessBackgroundHoverBrush">#CEEAD6</SolidColorBrush>
+                    <SolidColorBrush x:Key="SuccessBackgroundPressedBrush">#A8DAB5</SolidColorBrush>
+                    <SolidColorBrush x:Key="SuccessForegroundBrush">#0B5A1F</SolidColorBrush>
+                    <SolidColorBrush x:Key="SuccessBorderBrush">#C4EAD3</SolidColorBrush>
                 </ResourceDictionary>
                 
             </ResourceDictionary.ThemeDictionaries>

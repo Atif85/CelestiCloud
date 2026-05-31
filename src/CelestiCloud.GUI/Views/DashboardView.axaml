@@ -29,8 +29,8 @@
                     </StackPanel>
 
                     <StackPanel Grid.Column="2" Orientation="Horizontal" Spacing="10" VerticalAlignment="Center">
-                        <Button Content="View Logs" Command="{Binding OpenLogViewerCommand}" Padding="16,8" Cursor="Hand"/>
-                        <Button Content="Stop All" Command="{Binding StopAllJobsCommand}" Background="#2E0C0C" Foreground="#FF6B6B" Padding="16,8" Cursor="Hand"/>
+                        <Button Content="View Logs" Command="{Binding OpenLogViewerCommand}" CornerRadius="6" Padding="16,8" Cursor="Hand"/>
+                        <Button Content="Stop All" Command="{Binding StopAllJobsCommand}" Classes="danger" Padding="16,8" Cursor="Hand"/>
                     </StackPanel>
                 </Grid>
 
@@ -43,8 +43,8 @@
                             <Style Selector="ItemsControl:empty">
                                 <Setter Property="Template">
                                     <ControlTemplate>
-                                        <TextBlock Text="No jobs are currently running." 
-                                                   Foreground="{DynamicResource TextSecondaryBrush}" 
+                                        <TextBlock Text="No uploads are currently running." 
+                                                   Foreground="{DynamicResource TextSecondaryBrush}"    
                                                    HorizontalAlignment="Center" 
                                                    Margin="0,50,0,0"/>
                                     </ControlTemplate>
@@ -127,6 +127,7 @@
                                 Background="Transparent"
                                 BorderBrush="{DynamicResource DividerBrush}"
                                 BorderThickness="1"
+                                CornerRadius ="6"
                                 Cursor="Hand"/>
                     </Grid>
             
@@ -166,7 +167,7 @@
                         </ScrollViewer>
                     </Border>
             
-                    <Button Grid.Row="2" Content="Close Viewer" Command="{Binding CloseLogViewerCommand}" HorizontalAlignment="Right" Margin="0,15,0,0" Padding="20,8"/>
+                    <Button Grid.Row="2" Content="Close Viewer" Command="{Binding CloseLogViewerCommand}" HorizontalAlignment="Right" CornerRadius="6" Margin="0,15,0,0" Padding="20,8"/>
                 </Grid>
             </Border>
         </Border>

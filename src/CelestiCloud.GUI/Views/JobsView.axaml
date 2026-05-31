@@ -1,7 +1,6 @@
 <UserControl xmlns="https://github.com/avaloniaui"
              xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
              xmlns:vm="using:CelestiCloud.GUI.ViewModels"
-             xmlns:models="using:CelestiCloud.Core.Models"
              x:Class="CelestiCloud.GUI.Views.JobsView"
              x:DataType="vm:JobsViewModel">
 
@@ -16,25 +15,57 @@
                 <ScrollViewer Grid.Row="1">
                     <ItemsControl ItemsSource="{Binding Jobs}">
                         <ItemsControl.ItemTemplate>
-                            <DataTemplate x:DataType="models:JobConfig">
-                                <!-- The Button acts as the card itself! -->
-                                <Button Command="{Binding $parent[UserControl].((vm:JobsViewModel)DataContext).OpenJobDetailsCommand}"
-                                        CommandParameter="{Binding}"
+                            <DataTemplate x:DataType="vm:JobUiModel">
+                
+                                <Button Command="{Binding $parent[UserControl].((vm:JobsViewModel)DataContext).OpenJobDetailsCommand}" 
+                                        CommandParameter="{Binding Config}"
                                         HorizontalAlignment="Stretch" HorizontalContentAlignment="Stretch"
                                         Background="{DynamicResource SidebarBackgroundBrush}"
                                         BorderBrush="{DynamicResource DividerBrush}" BorderThickness="1"
                                         CornerRadius="8" Padding="16,18" Margin="0,0,0,10" Cursor="Hand">
                     
-                                    <Grid ColumnDefinitions="*, Auto" Background="Transparent">
+                                    <Grid ColumnDefinitions="*, Auto, Auto" Background="Transparent">
+                        
+                                        <!-- Col 0: Text Content -->
                                         <StackPanel Grid.Column="0" VerticalAlignment="Center">
-                                            <TextBlock Text="{Binding Name}" FontSize="16" FontWeight="SemiBold" Foreground="{DynamicResource TextPrimaryBrush}"/>
+                                            <TextBlock Text="{Binding Config.Name}" FontSize="16" FontWeight="SemiBold" Foreground="{DynamicResource TextPrimaryBrush}"/>
                                             <StackPanel Orientation="Horizontal" Spacing="10" Margin="0,4,0,0">
-                                                <TextBlock Text="{Binding JobType}" FontSize="12" Foreground="{DynamicResource TextSecondaryBrush}"/>
+                                                <TextBlock Text="{Binding Config.JobType}" FontSize="12" Foreground="{DynamicResource TextSecondaryBrush}"/>
                                                 <TextBlock Text="•" FontSize="12" Foreground="{DynamicResource TextSecondaryBrush}"/>
-                                                <TextBlock Text="{Binding RemoteRootPath}" FontSize="12" Foreground="{DynamicResource TextSecondaryBrush}"/>
+                                                <TextBlock Text="{Binding Config.RemoteRootPath}" FontSize="12" Foreground="{DynamicResource TextSecondaryBrush}"/>
                                             </StackPanel>
                                         </StackPanel>
-                                        <TextBlock Grid.Column="1" Text="➔" FontSize="16" Foreground="{DynamicResource TextSecondaryBrush}" VerticalAlignment="Center" Margin="0,0,10,0"/>
+
+                                        <!-- Col 1: Dynamic Theme-Aware Status Badges -->
+                        
+                                        <!-- Running Badge -->
+                                        <Border Grid.Column="1" 
+                                                Background="{DynamicResource SuccessBackgroundBrush}" 
+                                                BorderBrush="{DynamicResource SuccessBorderBrush}" 
+                                                BorderThickness="1" 
+                                                CornerRadius="4" 
+                                                Padding="10,6" 
+                                                VerticalAlignment="Center"
+                                                Margin="0,0,24,0"
+                                                IsVisible="{Binding IsRunning}">
+                                            <TextBlock Text="● Running" Foreground="{DynamicResource SuccessForegroundBrush}" FontSize="12" FontWeight="Bold"/>
+                                        </Border>
+
+                                        <!-- Stopped Badge -->
+                                        <Border Grid.Column="1" 
+                                                Background="{DynamicResource ContentBackgroundBrush}" 
+                                                BorderBrush="{DynamicResource DividerBrush}" 
+                                                BorderThickness="1" 
+                                                CornerRadius="4" 
+                                                Padding="8,4" 
+                                                VerticalAlignment="Center"
+                                                Margin="0,0,24,0"
+                                                IsVisible="{Binding !IsRunning}">
+                                            <TextBlock Text="○ Idle" Foreground="{DynamicResource TextSecondaryBrush}" FontSize="12" FontWeight="Bold"/>
+                                        </Border>
+
+                                        <!-- Col 2: Arrow -->
+                                        <TextBlock Grid.Column="2" Text="➔" FontSize="16" Foreground="{DynamicResource TextSecondaryBrush}" VerticalAlignment="Center" Margin="0,0,10,0"/>
                                     </Grid>
                                 </Button>
                             </DataTemplate>
@@ -66,11 +97,23 @@
                             <TextBlock Grid.Column="0" Text="{Binding SelectedJobDetails.Name}" FontSize="20" FontWeight="Bold" Foreground="{DynamicResource TextPrimaryBrush}" VerticalAlignment="Center"/>
                             
                             <!-- Dynamic Status Badges -->
-                            <Border Grid.Column="1" Background="#1E4620" BorderBrush="#2E7D32" BorderThickness="1" CornerRadius="4" Padding="8,4" IsVisible="{Binding IsSelectedJobRunning}">
-                                <TextBlock Text="● Running" Foreground="#4CAF50" FontSize="12" FontWeight="Bold"/>
+                            <Border Background="{DynamicResource SuccessBackgroundBrush}" 
+                                    BorderBrush="{DynamicResource SuccessBorderBrush}" 
+                                    BorderThickness="1" 
+                                    CornerRadius="4" 
+                                    Padding="8,4" 
+                                    IsVisible="{Binding IsSelectedJobRunning}">
+                                <TextBlock Text="● Running" Foreground="{DynamicResource SuccessForegroundBrush}" FontSize="12" FontWeight="Bold"/>
                             </Border>
-                            <Border Grid.Column="1" Background="#333333" BorderBrush="#555555" BorderThickness="1" CornerRadius="4" Padding="8,4" IsVisible="{Binding !IsSelectedJobRunning}">
-                                <TextBlock Text="○ Stopped" Foreground="#AAAAAA" FontSize="12" FontWeight="Bold"/>
+
+                            <!-- Stopped Detail Badge (Theme-aware) -->
+                            <Border Background="{DynamicResource ContentBackgroundBrush}" 
+                                    BorderBrush="{DynamicResource DividerBrush}" 
+                                    BorderThickness="1" 
+                                    CornerRadius="4" 
+                                    Padding="8,4" 
+                                    IsVisible="{Binding !IsSelectedJobRunning}">
+                                <TextBlock Text="○ Stopped" Foreground="{DynamicResource TextSecondaryBrush}" FontSize="12" FontWeight="Bold"/>
                             </Border>
                         </Grid>
 
@@ -121,7 +164,9 @@
                             <Grid ColumnDefinitions="*, Auto">
                                 
                                 <!-- Play/Stop Action -->
-                                <Button Grid.Column="0" HorizontalAlignment="Left" Command="{Binding ToggleSelectedJobStateCommand}">
+                                <Button Grid.Column="0" HorizontalAlignment="Left"
+                                        Command="{Binding ToggleSelectedJobStateCommand}" 
+                                        Padding="16,8" CornerRadius="6"> 
                                     <Panel>
                                         <StackPanel Orientation="Horizontal" Spacing="8" IsVisible="{Binding !IsSelectedJobRunning}">
                                             <TextBlock Text="▶" Foreground="#4CAF50"/>
@@ -135,8 +180,8 @@
                                 </Button>
 
                                 <StackPanel Grid.Column="1" Orientation="Horizontal" Spacing="10">
-                                    <Button Content="Edit" Command="{Binding OpenEditJobCommand}" Padding="16,8" Cursor="Hand"/>
-                                    <Button Content="Close" Command="{Binding CloseJobDetailsCommand}" Padding="16,8" Cursor="Hand"/>
+                                    <Button Content="Edit" Command="{Binding OpenEditJobCommand}" CornerRadius="6" Padding="16,8" Cursor="Hand"/>
+                                    <Button Content="Close" Command="{Binding CloseJobDetailsCommand}" CornerRadius="6" Padding="16,8" Cursor="Hand"/>
                                 </StackPanel>
                             </Grid>
                         </Border>
@@ -226,7 +271,7 @@
                                     </ItemsControl>
                                     <Grid ColumnDefinitions="*, Auto" Margin="0,4,0,0">
                                         <TextBox Grid.Column="0" PlaceholderText="Add full path (e.g. C:\Docs)" Text="{Binding $parent[UserControl].((vm:JobsViewModel)DataContext).NewLocalPathInput}" Margin="0,0,8,0"/>
-                                        <Button Grid.Column="1" Content="Add" Command="{Binding $parent[UserControl].((vm:JobsViewModel)DataContext).AddLocalPathCommand}"/>
+                                        <Button Grid.Column="1" Content="Add" Command="{Binding $parent[UserControl].((vm:JobsViewModel)DataContext).AddLocalPathCommand}" CornerRadius="6"/>
                                     </Grid>
                                 </StackPanel>
 
@@ -248,7 +293,7 @@
                                     </ItemsControl>
                                     <Grid ColumnDefinitions="*, Auto" Margin="0,4,0,0">
                                         <TextBox Grid.Column="0" PlaceholderText="Add pattern (e.g. *.tmp)" Text="{Binding $parent[UserControl].((vm:JobsViewModel)DataContext).NewIgnorePatternInput}" Margin="0,0,8,0"/>
-                                        <Button Grid.Column="1" Content="Add" Command="{Binding $parent[UserControl].((vm:JobsViewModel)DataContext).AddIgnorePatternCommand}"/>
+                                        <Button Grid.Column="1" Content="Add" Command="{Binding $parent[UserControl].((vm:JobsViewModel)DataContext).AddIgnorePatternCommand}" CornerRadius="6"/>
                                     </Grid>
                                 </StackPanel>
 
@@ -260,12 +305,12 @@
                             <Grid ColumnDefinitions="Auto, *">
                                 
                                 <Button Grid.Column="0" Content="Delete Job" IsVisible="{Binding !IsCreatingNew}"
-                                        Command="{Binding DeleteJobCommand}" Background="#2E0C0C" Foreground="#FF6B6B" BorderBrush="#5E1414" BorderThickness="1" Cursor="Hand"/>
+                                        Command="{Binding DeleteJobCommand}" Classes="danger" Cursor="Hand"/>
 
                                 <StackPanel Grid.Column="1" Orientation="Horizontal" HorizontalAlignment="Right" Spacing="10">
-                                    <Button Content="Cancel" Command="{Binding CloseEditModalCommand}" Padding="16,8" Cursor="Hand"/>
-                                    <Button Content="Create Job" IsVisible="{Binding IsCreatingNew}" Command="{Binding SaveJobCommand}" Background="#4CAF50" Foreground="White" Padding="16,8" Cursor="Hand" FontWeight="Bold"/>
-                                    <Button Content="Save Changes" IsVisible="{Binding !IsCreatingNew}" Command="{Binding SaveJobCommand}" Background="#4CAF50" Foreground="White" Padding="16,8" Cursor="Hand" FontWeight="Bold"/>
+                                    <Button Content="Cancel" Command="{Binding CloseEditModalCommand}" Padding="16,8" Cursor="Hand" CornerRadius="6"/>
+                                    <Button Content="Create Job" IsVisible="{Binding IsCreatingNew}" Command="{Binding SaveJobCommand}" Classes="success" Padding="16,8" Cursor="Hand" FontWeight="Bold"/>
+                                    <Button Content="Save Changes" IsVisible="{Binding !IsCreatingNew}" Command="{Binding SaveJobCommand}" Classes="success" Padding="16,8" Cursor="Hand" FontWeight="Bold"/>
                                 </StackPanel>
                             </Grid>
                         </Border>

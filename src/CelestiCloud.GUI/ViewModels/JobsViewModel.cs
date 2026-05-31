@@ -19,7 +19,7 @@ public partial class JobsViewModel : ViewModelBase
     private readonly DispatcherTimer _statusTimer;
 
     [ObservableProperty]
-    private ObservableCollection<JobConfig> _jobs = [];
+    private ObservableCollection<JobUiModel> _jobs = [];
 
     [ObservableProperty]
     private ObservableCollection<AccountConfig> _availableAccounts = [];
@@ -66,12 +66,18 @@ public partial class JobsViewModel : ViewModelBase
         _configManager = configManager;
         _jobEngine = jobEngine;
 
-        _statusTimer = new DispatcherTimer { Interval = TimeSpan.FromSeconds(3) };
+        _statusTimer = new DispatcherTimer { Interval = TimeSpan.FromSeconds(1) };
         _statusTimer.Tick += (s, e) =>
         {
             if (SelectedJobDetails != null)
             {
                 IsSelectedJobRunning = _jobEngine.GetActiveJobs().Any(j => j.Config.Id == SelectedJobDetails.Id);
+            }
+
+            var activeJobIds = _jobEngine.GetActiveJobs().Select(j => j.Config.Id).ToHashSet();
+            foreach (var uiJob in Jobs)
+            {
+                uiJob.IsRunning = activeJobIds.Contains(uiJob.Config.Id);
             }
         };
         _statusTimer.Start();
@@ -87,14 +93,19 @@ public partial class JobsViewModel : ViewModelBase
         Dispatcher.UIThread.Post(() =>
         {
             Jobs.Clear();
-            foreach (var job in loadedJobs) Jobs.Add(job);
+            var activeJobIds = _jobEngine.GetActiveJobs().Select(j => j.Config.Id).ToHashSet();
+            foreach (var job in loadedJobs)
+            {
+                bool isRunning = activeJobIds.Contains(job.Id);
+                Jobs.Add(new JobUiModel(job, isRunning));
+            }
 
             AvailableAccounts.Clear();
             foreach (var acc in loadedAccounts) AvailableAccounts.Add(acc);
 
             if (SelectedJobDetails != null)
             {
-                SelectedJobDetails = Jobs.FirstOrDefault(j => j.Id == SelectedJobDetails.Id) ?? SelectedJobDetails;
+                SelectedJobDetails = loadedJobs.FirstOrDefault(j => j.Id == SelectedJobDetails.Id) ?? SelectedJobDetails;
             }
         });
     }
@@ -168,8 +179,8 @@ public partial class JobsViewModel : ViewModelBase
             RemoteRootPath = SelectedJobDetails.RemoteRootPath,
             AutoStart = SelectedJobDetails.AutoStart,
             MaxConcurrentTransfers = SelectedJobDetails.MaxConcurrentTransfers,
-            LocalPaths = SelectedJobDetails.LocalPaths.ToList(),
-            IgnorePatterns = SelectedJobDetails.IgnorePatterns.ToList()
+            LocalPaths = [.. SelectedJobDetails.LocalPaths],
+            IgnorePatterns = [.. SelectedJobDetails.IgnorePatterns]
         };
 
         EditingLocalPaths = new ObservableCollection<string>(SelectedJobDetails.LocalPaths);

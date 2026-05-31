@@ -116,6 +116,7 @@
                                     CommandParameter="googledrive"
                                     Background="{DynamicResource ContentBackgroundBrush}"
                                     BorderBrush="{DynamicResource DividerBrush}"
+                                    CornerRadius="6"
                                     BorderThickness="1"
                                     Cursor="Hand">
                                 <Grid ColumnDefinitions="Auto, *">
@@ -135,7 +136,7 @@
                         </StackPanel>
 
                         <StackPanel Orientation="Horizontal" HorizontalAlignment="Right" Spacing="10" Margin="0,10,0,0">
-                            <Button Content="Cancel" Command="{Binding CloseAddAccountCommand}" Padding="16,8" Cursor="Hand"/>
+                            <Button Content="Cancel" Command="{Binding CloseAddAccountCommand}" CornerRadius="6" Padding="16,8" Cursor="Hand"/>
                         </StackPanel>
                     </StackPanel>
                 </Border>
@@ -183,11 +184,9 @@
                             <Button Grid.Column="0" 
                                     Content="Disconnect" 
                                     Command="{Binding RemoveAccountCommand}" 
-                                    Background="#2E0C0C" 
-                                    Foreground="#FF6B6B"
-                                    BorderBrush="#5E1414"
-                                    BorderThickness="1"
+                                    Classes="danger" 
                                     Padding="14,8" 
+                                    CornerRadius="6"
                                     Cursor="Hand"/>
                             
                             <!-- Right-aligned Close Button -->
@@ -195,6 +194,7 @@
                                     Content="Close" 
                                     Command="{Binding CloseDetailsCommand}" 
                                     Padding="16,8" 
+                                    CornerRadius="6"
                                     Cursor="Hand"/>
                         </Grid>
                     </StackPanel>
