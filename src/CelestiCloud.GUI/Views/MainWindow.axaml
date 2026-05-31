@@ -12,7 +12,7 @@
 
         x:Class="CelestiCloud.GUI.Views.MainWindow"
         x:DataType="vm:MainWindowViewModel"
-        Icon="/Assets/avalonia-logo.ico"
+        Icon="/Assets/logo.png" 
         Title="CelestiCloud"
         Background="{DynamicResource AppBackgroundBrush}">
 
