@@ -17,7 +17,7 @@ public static class BandwidthLimiterFactory
         var options = new TokenBucketRateLimiterOptions
         {
             TokenLimit = bytesPerSecond, // Maximum burst allowed
-            QueueLimit = 10,
+            QueueLimit = int.MaxValue,
             QueueProcessingOrder = QueueProcessingOrder.OldestFirst,
             ReplenishmentPeriod = TimeSpan.FromMilliseconds(1000 / intervalsPerSecond), // 100ms
             TokensPerPeriod = tokensPerPeriod,

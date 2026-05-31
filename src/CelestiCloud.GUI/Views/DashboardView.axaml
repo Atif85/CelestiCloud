@@ -84,7 +84,15 @@
                                                 <DataTemplate>
                                                     <Grid ColumnDefinitions="*, 200, 50" Margin="0,5">
                                                         <TextBlock Grid.Column="0" Text="{Binding Key}" VerticalAlignment="Center" Foreground="{DynamicResource TextPrimaryBrush}" TextTrimming="CharacterEllipsis" Margin="0,0,10,0"/>
-                                                        <ProgressBar Grid.Column="1" Minimum="0" Maximum="1" Value="{Binding Value}" Height="8" CornerRadius="4" VerticalAlignment="Center"/>
+                                                        <ProgressBar Grid.Column="1" 
+                                                             Minimum="0" 
+                                                             Maximum="1" 
+                                                             Value="{Binding Value}" 
+                                                             Height="8" 
+                                                             CornerRadius="4" 
+                                                             VerticalAlignment="Center"
+                                                             Background="{DynamicResource ProgressBarTrackBrush}"
+                                                             Foreground="{DynamicResource ProgressBarIndicatorBrush}"/>
                                                         <TextBlock Grid.Column="2" Text="{Binding Value, StringFormat={}{0:P0}}" HorizontalAlignment="Right" VerticalAlignment="Center" Foreground="{DynamicResource TextSecondaryBrush}"/>
                                                     </Grid>
                                                 </DataTemplate>

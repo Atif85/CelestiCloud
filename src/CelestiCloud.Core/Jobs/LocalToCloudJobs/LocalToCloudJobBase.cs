@@ -605,6 +605,11 @@ public abstract class LocalToCloudJobBase : JobBase
                     InvalidateRemoteDirectoryCache(remotePath);
                     return;
                 }
+                catch (OperationCanceledException)
+                {
+                    Logger.Log(LogLevel.Debug, $"Upload of '{Path.GetFileName(localPath)}' was canceled by user.");
+                    return;
+                }
                 catch (IOException) when (i < maxRetries - 1)
                 {
                     // File is currently locked; wait a second and retry

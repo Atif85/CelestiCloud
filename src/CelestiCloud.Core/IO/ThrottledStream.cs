@@ -1,7 +1,9 @@
-﻿using System.Threading.RateLimiting;
+﻿using System.Diagnostics;
+using System.Threading.RateLimiting;
 
 namespace CelestiCloud.Core.IO;
 
+[DebuggerNonUserCode]
 public class ThrottledStream : Stream
 {
     private readonly Stream _baseStream;
@@ -22,6 +24,8 @@ public class ThrottledStream : Stream
         _limiter = limiter;
         _maxChunkSize = maxChunkSize;
         _leaveOpen = leaveOpen;
+
+        System.Diagnostics.Debug.WriteLine($"[ThrottledStream] Created. Is Limiter Null? {limiter == null}. Max Chunk Size: {maxChunkSize} bytes");
     }
 
     public override bool CanRead => _baseStream.CanRead;
@@ -66,6 +70,12 @@ public class ThrottledStream : Stream
             // Wait synchronously to acquire permits (1 permit = 1 byte)
             using var lease = _limiter.AcquireAsync(toRead).AsTask().GetAwaiter().GetResult();
 
+            if (!lease.IsAcquired)
+            {
+                Thread.Sleep(10);
+                continue;
+            }
+
             int read = _baseStream.Read(buffer, offset, toRead);
             if (read <= 0) break;
 
@@ -92,6 +102,12 @@ public class ThrottledStream : Stream
             int toWrite = Math.Min(count, _maxChunkSize);
 
             using var lease = _limiter.AcquireAsync(toWrite).AsTask().GetAwaiter().GetResult();
+
+            if (!lease.IsAcquired)
+            {
+                Thread.Sleep(10);
+                continue;
+            }
 
             _baseStream.Write(buffer, offset, toWrite);
 
@@ -120,6 +136,12 @@ public class ThrottledStream : Stream
 
             using var lease = await _limiter.AcquireAsync(toRead, cancellationToken);
 
+            if (!lease.IsAcquired)
+            {
+                await Task.Delay(10, cancellationToken);
+                continue;
+            }
+
             int read = await _baseStream.ReadAsync(buffer, offset, toRead, cancellationToken);
             if (read <= 0) break;
 
@@ -147,6 +169,12 @@ public class ThrottledStream : Stream
 
             using var lease = await _limiter.AcquireAsync(toWrite, cancellationToken);
 
+            if (!lease.IsAcquired)
+            {
+                Thread.Sleep(10);
+                continue;
+            }
+
             await _baseStream.WriteAsync(buffer, offset, toWrite, cancellationToken);
 
             offset += toWrite;
@@ -162,6 +190,7 @@ public class ThrottledStream : Stream
     {
         if (_limiter == null)
         {
+            System.Diagnostics.Debug.WriteLine("[ThrottledStream] ReadAsync bypassing limiter (Limiter is null)");
             int readDirect = await _baseStream.ReadAsync(buffer, cancellationToken);
             if (readDirect > 0) BandwidthMonitor.RecordBytes(readDirect);
             return readDirect;
@@ -176,6 +205,12 @@ public class ThrottledStream : Stream
             int toRead = Math.Min(remaining, _maxChunkSize);
 
             using var lease = await _limiter.AcquireAsync(toRead, cancellationToken);
+
+            if (!lease.IsAcquired)
+            {
+                await Task.Delay(10, cancellationToken); 
+                continue;
+            }
 
             var slice = buffer.Slice(offset, toRead);
             int read = await _baseStream.ReadAsync(slice, cancellationToken);
@@ -209,6 +244,12 @@ public class ThrottledStream : Stream
             int toWrite = Math.Min(remaining, _maxChunkSize);
 
             using var lease = await _limiter.AcquireAsync(toWrite, cancellationToken);
+
+            if (!lease.IsAcquired)
+            {
+                Thread.Sleep(10);
+                continue;
+            }
 
             var slice = buffer.Slice(offset, toWrite);
             await _baseStream.WriteAsync(slice, cancellationToken);

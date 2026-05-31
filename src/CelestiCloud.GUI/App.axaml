@@ -26,6 +26,9 @@
                     
                     <SolidColorBrush x:Key="TextPrimaryBrush">#ffffff</SolidColorBrush>
                     <SolidColorBrush x:Key="TextSecondaryBrush">#9ca3af</SolidColorBrush>
+
+                    <SolidColorBrush x:Key="ProgressBarTrackBrush">#2c2c2e</SolidColorBrush>    
+                    <SolidColorBrush x:Key="ProgressBarIndicatorBrush">#10B981</SolidColorBrush> 
                 </ResourceDictionary>
 
                 <!-- LIGHT THEME PALETTE -->
@@ -37,6 +40,9 @@
                     
                     <SolidColorBrush x:Key="TextPrimaryBrush">#111827</SolidColorBrush>
                     <SolidColorBrush x:Key="TextSecondaryBrush">#6b7280</SolidColorBrush>
+
+                    <SolidColorBrush x:Key="ProgressBarTrackBrush">#e5e7eb</SolidColorBrush>     
+                    <SolidColorBrush x:Key="ProgressBarIndicatorBrush">#059669</SolidColorBrush>
                 </ResourceDictionary>
                 
             </ResourceDictionary.ThemeDictionaries>
