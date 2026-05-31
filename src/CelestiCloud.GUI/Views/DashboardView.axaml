@@ -90,24 +90,63 @@
 
         <!-- LOG VIEWER MODAL OVERLAY -->
         <Border Background="#A0000000" IsVisible="{Binding IsLogViewerOpen}">
-            <Border Width="700" Height="500" 
+            <Border Width="850" Height="600" 
                     Background="{DynamicResource ContentBackgroundBrush}" 
                     BorderBrush="{DynamicResource DividerBrush}" BorderThickness="1" 
                     CornerRadius="12" Padding="20"
                     HorizontalAlignment="Center" VerticalAlignment="Center">
-                
+        
                 <Grid RowDefinitions="Auto, *, Auto">
-                    <TextBlock Grid.Row="0" Text="Application Logs" FontSize="18" FontWeight="Bold" Margin="0,0,0,10"/>
-                    
-                    <TextBox Grid.Row="1" 
-                             Text="{Binding LiveLogText}" 
-                             IsReadOnly="True" 
-                             TextWrapping="Wrap" 
-                             AcceptsReturn="True"
-                             FontFamily="Consolas, Monospace"
-                             Background="{DynamicResource SidebarBackgroundBrush}"/>
-                    
-                    <Button Grid.Row="2" Content="Close" Command="{Binding CloseLogViewerCommand}" HorizontalAlignment="Right" Margin="0,15,0,0" Padding="20,8"/>
+            
+                    <!-- Modal Header -->
+                    <Grid Grid.Row="0" ColumnDefinitions="*, Auto" Margin="0,0,0,15">
+                        <TextBlock Grid.Column="0" Text="Application Logs" FontSize="18" FontWeight="Bold" VerticalAlignment="Center"/>
+                        <Button Grid.Column="1" 
+                                Content="📁 Open Logs Folder" 
+                                Command="{Binding OpenLogsFolderCommand}"
+                                Background="Transparent"
+                                BorderBrush="{DynamicResource DividerBrush}"
+                                BorderThickness="1"
+                                Cursor="Hand"/>
+                    </Grid>
+            
+                    <!-- Terminal-Style Log Output -->
+                    <Border Grid.Row="1" Background="#0C0C0C" BorderBrush="{DynamicResource DividerBrush}" BorderThickness="1" CornerRadius="8">
+                        <!-- A ScrollViewer wraps an ItemsControl so we can easily colorize individual parts of the text -->
+                        <ScrollViewer Padding="12">
+                            <ItemsControl ItemsSource="{Binding LiveLogs}">
+                                <ItemsControl.ItemTemplate>
+                                    <DataTemplate>
+                                        <StackPanel Orientation="Horizontal" Margin="0,2">
+                                    
+                                            <!-- Timestamp (Gray) -->
+                                            <TextBlock Text="{Binding FormattedTime, StringFormat='[{0}] '}" 
+                                                       Foreground="#888888" 
+                                                       FontFamily="Consolas, Monospace" 
+                                                       FontSize="13"/>
+                                    
+                                            <!-- Log Level (Colored dynamically based on our C# ColorHex property) -->
+                                            <TextBlock Text="{Binding Level, StringFormat='[{0}] '}" 
+                                                       Foreground="{Binding ColorHex}" 
+                                                       FontWeight="Bold"
+                                                       FontFamily="Consolas, Monospace" 
+                                                       FontSize="13"
+                                                       Width="70"/>
+                                    
+                                            <!-- Message Text (Light Gray) -->
+                                            <TextBlock Text="{Binding Text}" 
+                                                       Foreground="#CCCCCC" 
+                                                       FontFamily="Consolas, Monospace" 
+                                                       FontSize="13" 
+                                                       TextWrapping="Wrap"/>
+                                        </StackPanel>
+                                    </DataTemplate>
+                                </ItemsControl.ItemTemplate>
+                            </ItemsControl>
+                        </ScrollViewer>
+                    </Border>
+            
+                    <Button Grid.Row="2" Content="Close Viewer" Command="{Binding CloseLogViewerCommand}" HorizontalAlignment="Right" Margin="0,15,0,0" Padding="20,8"/>
                 </Grid>
             </Border>
         </Border>

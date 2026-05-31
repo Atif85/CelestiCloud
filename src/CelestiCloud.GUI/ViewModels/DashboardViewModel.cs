@@ -1,10 +1,12 @@
 ﻿using Avalonia.Threading;
 using CelestiCloud.Core.Config;
 using CelestiCloud.Core.Jobs;
+using CelestiCloud.GUI.Logging;
 using CommunityToolkit.Mvvm.ComponentModel;
 using CommunityToolkit.Mvvm.Input;
 using System;
 using System.Collections.ObjectModel;
+using System.Diagnostics;
 using System.IO;
 using System.Linq;
 
@@ -25,11 +27,14 @@ public partial class DashboardViewModel : ViewModelBase
 
     [ObservableProperty]
     private bool _isLogViewerOpen;
+    public ObservableCollection<LogMessage> LiveLogs { get; }
 
-    public DashboardViewModel(ConfigManager configManager, JobEngine jobEngine)
+    public DashboardViewModel(ConfigManager configManager, JobEngine jobEngine, Logging.ObservableUiLogger uiLogger)
     {
         _configManager = configManager;
         _jobEngine = jobEngine;
+
+        LiveLogs = uiLogger.LiveLogs;
 
         // Refresh the dashboard every 500ms
         _refreshTimer = new DispatcherTimer { Interval = TimeSpan.FromMilliseconds(500) };
@@ -56,42 +61,32 @@ public partial class DashboardViewModel : ViewModelBase
     }
 
     [RelayCommand]
-    private void OpenLogViewer()
+    private void OpenLogViewer() => IsLogViewerOpen = true;
+
+    [RelayCommand]
+    private void CloseLogViewer() => IsLogViewerOpen = false;
+
+    [RelayCommand]
+    private void OpenLogsFolder()
     {
         string logsDir = Path.Combine(_configManager.GetAppDataPath(), "logs");
-        string logFile = Path.Combine(logsDir, $"CelestiCloud_GUI.log");
-
-        if (File.Exists(logFile))
+        if (Directory.Exists(logsDir))
         {
             try
             {
-                // We MUST use FileShare.ReadWrite because the FileLogger is actively writing to it!
-                using var fs = new FileStream(logFile, FileMode.Open, FileAccess.Read, FileShare.ReadWrite);
-                using var sr = new StreamReader(fs);
-
-                // Read the end of the log file (e.g., last few kilobytes) so we don't freeze the UI on a huge log
-                string fullLog = sr.ReadToEnd();
-
-                // Take the last 10,000 characters just to keep the UI snappy
-                LiveLogText = fullLog.Length > 10000 ? "..." + fullLog[^10000..] : fullLog;
+                // Cross-platform way to open a folder in the native file explorer
+                if (OperatingSystem.IsWindows())
+                    Process.Start(new ProcessStartInfo { FileName = "explorer.exe", Arguments = logsDir });
+                else if (OperatingSystem.IsMacOS())
+                    Process.Start("open", logsDir);
+                else if (OperatingSystem.IsLinux())
+                    Process.Start("xdg-open", logsDir);
             }
             catch (Exception ex)
             {
-                LiveLogText = $"Error reading log: {ex.Message}";
+                // Handle edge-case if OS lacks default file explorer mapping
+                Console.WriteLine(ex.Message);
             }
         }
-        else
-        {
-            LiveLogText = "No logs generated for today yet.";
-        }
-
-        IsLogViewerOpen = true;
-    }
-
-    [RelayCommand]
-    private void CloseLogViewer()
-    {
-        IsLogViewerOpen = false;
-        LiveLogText = string.Empty;
     }
 }

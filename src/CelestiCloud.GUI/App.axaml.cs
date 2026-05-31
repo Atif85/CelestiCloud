@@ -6,6 +6,7 @@ using CelestiCloud.Core.IO;
 using CelestiCloud.Core.Jobs;
 using CelestiCloud.Core.Logging;
 using CelestiCloud.Core.Providers;
+using CelestiCloud.GUI.Logging;
 using CelestiCloud.GUI.ViewModels;
 using CelestiCloud.GUI.Views;
 using System.Threading.RateLimiting;
@@ -34,16 +35,18 @@ public partial class App : Application
                 ? BandwidthLimiterFactory.CreateLimiter(uploadLimit * 1024)
                 : null;
 
-            IJobLogger logger = new FileLogger(configManager.GetAppDataPath(), "CelestiCloud_GUI");
+            IJobLogger fileLogger = new FileLogger(configManager.GetAppDataPath(), "CelestiCloud_GUI");
+
+            var uiLogger = new ObservableUiLogger(fileLogger);
 
             // Create the Global Sync Engine 
-            var jobEngine = new JobEngine(configManager, providerFactory, limiter, logger);
+            var jobEngine = new JobEngine(configManager, providerFactory, limiter, uiLogger);
 
             //_ = syncEngine.StartAutoStartJobsAsync();
 
             desktop.MainWindow = new MainWindow
             {
-                DataContext = new MainWindowViewModel(configManager, providerFactory , jobEngine),
+                DataContext = new MainWindowViewModel(configManager, providerFactory , jobEngine, uiLogger),
             };
 
             desktop.Exit += async (sender, args) =>
