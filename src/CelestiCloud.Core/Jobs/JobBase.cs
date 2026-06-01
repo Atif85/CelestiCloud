@@ -64,7 +64,7 @@ public abstract class JobBase
         }
     }
 
-    public async Task StopAsync()
+    public Task StopAsync()
     {
         JobLockManager.ReleaseLock(Config.Id, AppDataPath);
 
@@ -76,8 +76,18 @@ public abstract class JobBase
 
         if (cts != null)
         {
-            await cts.CancelAsync();
+            _ = Task.Run(() =>
+            {
+                try
+                {
+                    cts.Cancel();
+                }
+                catch (ObjectDisposedException) { }
+                catch (Exception) { }
+            });
         }
+
+        return Task.CompletedTask;
     }
 
     /// <summary>
