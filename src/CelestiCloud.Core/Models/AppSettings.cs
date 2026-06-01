@@ -7,4 +7,6 @@ public class AppSettings
 
     // 0 means unlimited.
     public int GlobalUploadLimitKbps { get; set; } = 0;
+    public bool StartOnStartup { get; set; } = false;
+    public bool MinimizeToTrayOnClose { get; set; } = true;
 }

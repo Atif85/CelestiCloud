@@ -3,6 +3,7 @@ using Avalonia.Styling;
 using CelestiCloud.Core.Config;
 using CelestiCloud.Core.Jobs;
 using CelestiCloud.Core.Models;
+using CelestiCloud.GUI.Helpers;
 using CommunityToolkit.Mvvm.ComponentModel;
 using System.Collections.ObjectModel;
 
@@ -17,6 +18,12 @@ public partial class SettingsViewModel : ViewModelBase
     public ObservableCollection<string> AvailableThemes { get; } = ["System", "Light", "Dark"];
 
     [ObservableProperty]
+    private bool _startOnStartup;
+
+    [ObservableProperty]
+    private bool _minimizeToTrayOnClose;
+
+    [ObservableProperty]
     private string _selectedTheme;
 
     [ObservableProperty]
@@ -27,6 +34,9 @@ public partial class SettingsViewModel : ViewModelBase
         _configManager = configManager;
         _jobEngine = jobEngine;
         _currentSettings = _configManager.LoadSettings();
+
+        _startOnStartup = _currentSettings.StartOnStartup;
+        _minimizeToTrayOnClose = _currentSettings.MinimizeToTrayOnClose;
 
         // Initialize UI properties with saved values (bypassing the On...Changed triggers temporarily)
         _selectedTheme = _currentSettings.Theme;
@@ -64,5 +74,20 @@ public partial class SettingsViewModel : ViewModelBase
             "Dark" => ThemeVariant.Dark,
             _ => ThemeVariant.Default // Follows OS System theme
         };
+    }
+
+    partial void OnStartOnStartupChanged(bool value)
+    {
+        _currentSettings.StartOnStartup = value;
+        _configManager.SaveSettings(_currentSettings);
+
+        // Configures the launch-on-startup registries/files across platforms!
+        StartupManager.SetStartup(value);
+    }
+
+    partial void OnMinimizeToTrayOnCloseChanged(bool value)
+    {
+        _currentSettings.MinimizeToTrayOnClose = value;
+        _configManager.SaveSettings(_currentSettings);
     }
 }
