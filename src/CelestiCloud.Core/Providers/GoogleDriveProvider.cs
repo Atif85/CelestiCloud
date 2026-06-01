@@ -1,4 +1,4 @@
-﻿using CelestiCloud.Core.Models;
+using CelestiCloud.Core.Models;
 using Google.Apis.Auth.OAuth2;
 using Google.Apis.Drive.v3;
 using Google.Apis.Services;
@@ -311,23 +311,9 @@ public class GoogleDriveProvider : ICloudProvider
                 continue;
             }
 
-            // Lock to prevent duplicate creations
-            await _folderLock.WaitAsync();
-
-            FileStream? crossProcessLock = null;
-            if (createIfMissing)
+            if (!createIfMissing)
             {
-                crossProcessLock = await AcquireCrossProcessLockAsync();
-            }
-            try
-            {
-                // Double-check cache inside the lock in case another thread just created it!
-                if (canUseCache && _folderCache.TryGetValue(currentPath, out cachedId))
-                {
-                    currentParentId = cachedId;
-                    continue;
-                }
-
+                // Read-only path resolution doesn't need locks (no creation risk)
                 var request = _service!.Files.List();
                 string safeSegment = segment.Replace("'", "\\'");
                 request.Q = $"name = '{safeSegment}' and '{currentParentId}' in parents and trashed = false";
@@ -346,35 +332,72 @@ public class GoogleDriveProvider : ICloudProvider
                         _folderCache[currentPath] = currentParentId;
                     }
                 }
-                else if (createIfMissing)
-                {
-                    // Safe to create now because we are inside the Semaphore lock
-                    var folderMetadata = new DriveFile
-                    {
-                        Name = segment,
-                        MimeType = FolderMimeType,
-                        Parents = [currentParentId]
-                    };
-
-                    var createRequest = _service.Files.Create(folderMetadata);
-                    createRequest.Fields = "id";
-                    var newFolder = await createRequest.ExecuteAsync();
-
-                    currentParentId = newFolder.Id;
-                    _folderCache[currentPath] = currentParentId;
-                }
                 else
                 {
                     return null;
                 }
             }
-            finally
+            else
             {
-                if (crossProcessLock != null)
+                // Lock to prevent duplicate creations in write mode
+                await _folderLock.WaitAsync();
+
+                FileStream? crossProcessLock = null;
+                try
                 {
-                    await crossProcessLock.DisposeAsync();
+                    crossProcessLock = await AcquireCrossProcessLockAsync();
+
+                    // Double-check cache inside the lock in case another thread just created it!
+                    if (canUseCache && _folderCache.TryGetValue(currentPath, out cachedId))
+                    {
+                        currentParentId = cachedId;
+                        continue;
+                    }
+
+                    var request = _service!.Files.List();
+                    string safeSegment = segment.Replace("'", "\\'");
+                    request.Q = $"name = '{safeSegment}' and '{currentParentId}' in parents and trashed = false";
+                    request.Fields = "files(id, mimeType)";
+
+                    var result = await request.ExecuteAsync();
+                    var file = result.Files.FirstOrDefault();
+
+                    if (file != null)
+                    {
+                        currentParentId = file.Id;
+
+                        // Only cache it if it's explicitly a folder
+                        if (canUseCache || file.MimeType == FolderMimeType)
+                        {
+                            _folderCache[currentPath] = currentParentId;
+                        }
+                    }
+                    else
+                    {
+                        // Safe to create now because we are inside the Semaphore and cross-process locks
+                        var folderMetadata = new DriveFile
+                        {
+                            Name = segment,
+                            MimeType = FolderMimeType,
+                            Parents = [currentParentId]
+                        };
+
+                        var createRequest = _service.Files.Create(folderMetadata);
+                        createRequest.Fields = "id";
+                        var newFolder = await createRequest.ExecuteAsync();
+
+                        currentParentId = newFolder.Id;
+                        _folderCache[currentPath] = currentParentId;
+                    }
                 }
-                _folderLock.Release();
+                finally
+                {
+                    if (crossProcessLock != null)
+                    {
+                        await crossProcessLock.DisposeAsync();
+                    }
+                    _folderLock.Release();
+                }
             }
         }
 

@@ -1,4 +1,4 @@
-﻿using CelestiCloud.Core.Models;
+using CelestiCloud.Core.Models;
 
 namespace CelestiCloud.Core.Jobs;
 
@@ -64,17 +64,20 @@ public abstract class JobBase
         }
     }
 
-    /// <summary>
-    /// Gracefully requests the job to stop.
-    /// </summary>
-    public Task StopAsync()
+    public async Task StopAsync()
     {
         JobLockManager.ReleaseLock(Config.Id, AppDataPath);
+
+        CancellationTokenSource? cts;
         lock (_lock)
         {
-            _cts?.Cancel();
+            cts = _cts;
         }
-        return Task.CompletedTask;
+
+        if (cts != null)
+        {
+            await cts.CancelAsync();
+        }
     }
 
     /// <summary>

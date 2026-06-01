@@ -1,4 +1,4 @@
-﻿using CelestiCloud.Core.Config;
+using CelestiCloud.Core.Config;
 using CelestiCloud.Core.Filtering;
 using CelestiCloud.Core.IO;
 using CelestiCloud.Core.Logging;

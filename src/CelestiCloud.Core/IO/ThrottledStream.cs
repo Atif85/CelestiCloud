@@ -1,4 +1,4 @@
-﻿using System.Diagnostics;
+using System.Diagnostics;
 using System.Threading.RateLimiting;
 
 namespace CelestiCloud.Core.IO;
@@ -171,7 +171,7 @@ public class ThrottledStream : Stream
 
             if (!lease.IsAcquired)
             {
-                Thread.Sleep(10);
+                await Task.Delay(10, cancellationToken);
                 continue;
             }
 
@@ -247,7 +247,7 @@ public class ThrottledStream : Stream
 
             if (!lease.IsAcquired)
             {
-                Thread.Sleep(10);
+                await Task.Delay(10, cancellationToken);
                 continue;
             }
 

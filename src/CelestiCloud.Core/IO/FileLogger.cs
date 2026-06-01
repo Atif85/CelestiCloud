@@ -1,4 +1,4 @@
-﻿using System;
+using System;
 using System.IO;
 using CelestiCloud.Core.Logging;
 
@@ -57,15 +57,15 @@ public class FileLogger : IJobLogger
         var fileInfo = new FileInfo(_logFilePath);
         if (fileInfo.Length < MaxLogSizeInBytes) return;
 
-        // Shift existing historical backup files (e.g., .2.log -> deletes, .1.log -> .2.log)
-        for (int i = MaxArchiveFiles - 1; i >= 1; i--)
+        // Shift existing historical backup files (e.g., .3.log -> deletes, .2.log -> .3.log, .1.log -> .2.log)
+        for (int i = MaxArchiveFiles; i >= 1; i--)
         {
             string currentBackup = GetArchiveFilePath(i);
             string nextBackup = GetArchiveFilePath(i + 1);
 
             if (File.Exists(currentBackup))
             {
-                if (i == MaxArchiveFiles - 1)
+                if (i == MaxArchiveFiles)
                 {
                     // Delete the oldest backup file to respect the file count limit
                     File.Delete(currentBackup);

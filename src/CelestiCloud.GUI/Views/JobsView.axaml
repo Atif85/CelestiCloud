@@ -97,7 +97,8 @@
                             <TextBlock Grid.Column="0" Text="{Binding SelectedJobDetails.Name}" FontSize="20" FontWeight="Bold" Foreground="{DynamicResource TextPrimaryBrush}" VerticalAlignment="Center"/>
                             
                             <!-- Dynamic Status Badges -->
-                            <Border Background="{DynamicResource SuccessBackgroundBrush}" 
+                            <Border Grid.Column="1"
+                                    Background="{DynamicResource SuccessBackgroundBrush}" 
                                     BorderBrush="{DynamicResource SuccessBorderBrush}" 
                                     BorderThickness="1" 
                                     CornerRadius="4" 
@@ -107,7 +108,8 @@
                             </Border>
 
                             <!-- Stopped Detail Badge (Theme-aware) -->
-                            <Border Background="{DynamicResource ContentBackgroundBrush}" 
+                            <Border Grid.Column="1"
+                                    Background="{DynamicResource ContentBackgroundBrush}" 
                                     BorderBrush="{DynamicResource DividerBrush}" 
                                     BorderThickness="1" 
                                     CornerRadius="4" 
