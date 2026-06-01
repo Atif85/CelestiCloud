@@ -210,8 +210,8 @@ public abstract class LocalToCloudJobBase : JobBase
 
                 if (!_ignoreFilter.ShouldIgnore(localRootDir, localFilePath))
                 {
-                    Interlocked.Increment(ref _filesFound);
-                    State.FilesFound = _filesFound;
+                    int currentFound = Interlocked.Increment(ref _filesFound);
+                    State.FilesFound = currentFound;
 
                     await writer.WriteAsync(new ScanFileEvent(localFilePath, localRootDir), ct);
                 }
@@ -266,8 +266,8 @@ public abstract class LocalToCloudJobBase : JobBase
                 }
                 finally
                 {
-                    Interlocked.Increment(ref _filesProcessed);
-                    State.FilesProcessed = _filesProcessed;
+                    int currentProcessed = Interlocked.Increment(ref _filesProcessed);
+                    State.FilesProcessed = currentProcessed;
                 }
             }
         }
