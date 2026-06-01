@@ -17,11 +17,13 @@ public partial class DashboardViewModel : ViewModelBase
 {
     private readonly JobEngine _jobEngine;
     private readonly ConfigManager _configManager;
-    private readonly DispatcherTimer _refreshTimer;
+
+    private readonly DispatcherTimer _jobLayoutTimer;
+    private readonly DispatcherTimer _speedometerTimer;
 
     // We expose the active jobs directly to the UI
     [ObservableProperty]
-    private ObservableCollection<JobBase> _activeJobsList = [];
+    private ObservableCollection<RunningJobViewModel> _activeJobsList = [];
 
     [ObservableProperty]
     private string _currentSpeedText = "0 B/s";
@@ -44,25 +46,54 @@ public partial class DashboardViewModel : ViewModelBase
 
         LiveLogs = uiLogger.LiveLogs;
 
-        // Refresh the dashboard every 500ms
-        _refreshTimer = new DispatcherTimer { Interval = TimeSpan.FromMilliseconds(500) };
-        _refreshTimer.Tick += RefreshDashboard;
-        _refreshTimer.Start();
+        _jobLayoutTimer = new DispatcherTimer { Interval = TimeSpan.FromSeconds(1) };
+        _jobLayoutTimer.Tick += RefreshJobLayout;
+        _jobLayoutTimer.Start();
+
+        _speedometerTimer = new DispatcherTimer { Interval = TimeSpan.FromMilliseconds(100) };
+        _speedometerTimer.Tick += RefreshDashboard;
+        _speedometerTimer.Start();
+    }
+
+    private void RefreshJobLayout(object? sender, EventArgs e)
+    {
+        var currentActive = _jobEngine.GetActiveJobs().ToList();
+
+        // 1. Remove jobs that stopped
+        for (int i = ActiveJobsList.Count - 1; i >= 0; i--)
+        {
+            var existingJob = ActiveJobsList[i];
+            if (!currentActive.Any(j => j.Config.Id == existingJob.JobId))
+            {
+                ActiveJobsList.RemoveAt(i);
+            }
+        }
+
+        // 2. Add newly started jobs as UI-ready ViewModels
+        foreach (var job in currentActive)
+        {
+            if (!ActiveJobsList.Any(j => j.JobId == job.Config.Id))
+            {
+                ActiveJobsList.Add(new RunningJobViewModel(job));
+            }
+        }
     }
 
     private void RefreshDashboard(object? sender, EventArgs e)
     {
-        var currentActive = _jobEngine.GetActiveJobs().ToList();
-
-        // Simple UI refresh
-        ActiveJobsList.Clear();
-        foreach (var job in currentActive)
-        {
-            ActiveJobsList.Add(job);
-        }
-
         CurrentSpeedText = FormatBytes(BandwidthMonitor.CurrentSpeedBps) + "/s";
         TotalUploadedText = FormatBytes(BandwidthMonitor.TotalBytesUploaded);
+
+        // Update progress metrics on all active card view models!
+        var currentActive = _jobEngine.GetActiveJobs().ToList();
+        foreach (var uiJob in ActiveJobsList)
+        {
+            var coreJob = currentActive.FirstOrDefault(j => j.Config.Id == uiJob.JobId);
+            if (coreJob != null)
+            {
+                uiJob.Update(coreJob); 
+            }
+        }
     }
 
     [RelayCommand]
