@@ -19,17 +19,13 @@ public abstract class LocalToCloudJobBase : JobBase
     protected abstract bool AllowDeletions { get; }
 
     private readonly IgnoreFilter _ignoreFilter;
-
     private readonly List<FileSystemWatcher> _watchers = [];
     private Channel<FileEvent>? _eventChannel;
-
     private readonly ConcurrentDictionary<string, CancellationTokenSource> _debounceTicks = [];
     private readonly ConcurrentDictionary<string, Dictionary<string, CloudFile>> _remoteDirectoryCache = new(StringComparer.OrdinalIgnoreCase);
     private readonly SemaphoreSlim _cacheLock = new(1, 1);
-
     private int _filesFound;
     private int _filesProcessed;
-
     private readonly Dictionary<string, string> _folderNameCache = new(StringComparer.OrdinalIgnoreCase);
 
     protected LocalToCloudJobBase(JobConfig config, ICloudProvider provider, string appDataPath, RateLimiter? limiter, int safeChunkSize, IJobLogger logger)
@@ -63,7 +59,7 @@ public abstract class LocalToCloudJobBase : JobBase
         // Set up our threadsafe event queue
         _eventChannel = Channel.CreateUnbounded<FileEvent>(new UnboundedChannelOptions
         {
-            SingleReader = false, 
+            SingleReader = false,
             SingleWriter = false
         });
 
@@ -148,49 +144,136 @@ public abstract class LocalToCloudJobBase : JobBase
         State.FilesFound = 0;
         State.FilesProcessed = 0;
 
-        foreach (string localDir in Config.LocalPaths)
+        var scanChannel = Channel.CreateBounded<ScanFileEvent>(new BoundedChannelOptions(5000)
         {
-            cancellationToken.ThrowIfCancellationRequested();
+            SingleReader = false,
+            SingleWriter = true,
+            FullMode = BoundedChannelFullMode.Wait
+        });
 
-            if (!Directory.Exists(localDir))
+        // Spawn concurrent upload/reconciliation workers
+        var workerTasks = new List<Task>();
+        int concurrency = Config.MaxConcurrentTransfers;
+
+        for (int i = 0; i < concurrency; i++)
+        {
+            workerTasks.Add(ProcessScanChannelWorkerAsync(scanChannel.Reader, cancellationToken));
+        }
+
+        // Start the single-threaded directory crawler to stream files into the queue
+        try
+        {
+            foreach (string localDir in Config.LocalPaths)
             {
-                Logger.Log(LogLevel.Error, $"Local root directory is missing: '{localDir}'. Halting job to prevent accidental cloud deletions.");
+                cancellationToken.ThrowIfCancellationRequested();
 
-                _ = StopAsync();
-                return;
+                if (!Directory.Exists(localDir))
+                {
+                    Logger.Log(LogLevel.Error, $"Local root directory is missing: '{localDir}'. Halting job to prevent accidental cloud deletions.");
+                    _ = StopAsync();
+                    return;
+                }
+
+                Logger.Log(LogLevel.Debug, $"Streaming file discovery for '{localDir}'...");
+                await CrawlDirectoryAndQueueAsync(localDir, localDir, scanChannel.Writer, cancellationToken);
             }
+        }
+        finally
+        {
+            // Always complete the writer. This tells the workers that no more files
+            // are coming, allowing them to exit their loops gracefully once the queue is empty.
+            scanChannel.Writer.Complete();
+        }
 
-            // Gather all local files in the directory recursively
-            string[] localFiles = Directory.GetFiles(localDir, "*", SearchOption.AllDirectories);
+        // Wait for all concurrent workers to finish processing the backlog
+        await Task.WhenAll(workerTasks);
+    }
 
-            var eligibleFiles = localFiles
-                .Where(f => !_ignoreFilter.ShouldIgnore(localDir, f))
-                .ToList();
+    private async Task CrawlDirectoryAndQueueAsync(string currentLocalDir, string localRootDir,
+                                                   ChannelWriter<ScanFileEvent> writer,
+                                                   CancellationToken ct)
+    {
+        ct.ThrowIfCancellationRequested();
 
-            Interlocked.Add(ref _filesFound, eligibleFiles.Count);
-            State.
-                FilesFound = _filesFound;
+        // Directory Pruning
+        if (_ignoreFilter.ShouldIgnore(localRootDir, currentLocalDir))
+        {
+            return;
+        }
 
-            Logger.Log(LogLevel.Debug, $"Found {eligibleFiles.Count} eligible files in {localDir}. Checking remote state...");
-
-            var parallelOptions = new ParallelOptions
+        // Enumerate and queue files in the current folder
+        try
+        {
+            foreach (string localFilePath in Directory.EnumerateFiles(currentLocalDir))
             {
-                MaxDegreeOfParallelism = Config.MaxConcurrentTransfers,
-                CancellationToken = cancellationToken
-            };
+                ct.ThrowIfCancellationRequested();
 
-            await Parallel.ForEachAsync(eligibleFiles, parallelOptions, async (localFilePath, ct) =>
+                if (!_ignoreFilter.ShouldIgnore(localRootDir, localFilePath))
+                {
+                    Interlocked.Increment(ref _filesFound);
+                    State.FilesFound = _filesFound;
+
+                    await writer.WriteAsync(new ScanFileEvent(localFilePath, localRootDir), ct);
+                }
+            }
+        }
+        catch (UnauthorizedAccessException)
+        {
+            Logger.Log(LogLevel.Warning, $"Access denied to directory: '{currentLocalDir}'. Skipping files inside.");
+        }
+        catch (DirectoryNotFoundException)
+        {
+            return;
+        }
+
+        // Recursively walk subdirectories
+        try
+        {
+            var subDirectories = Directory.EnumerateDirectories(currentLocalDir);
+            foreach (string subDir in subDirectories)
+            {
+                ct.ThrowIfCancellationRequested();
+                await CrawlDirectoryAndQueueAsync(subDir, localRootDir, writer, ct);
+            }
+        }
+        catch (UnauthorizedAccessException) { }
+        catch (DirectoryNotFoundException) { }
+        catch (Exception ex)
+        {
+            Logger.Log(LogLevel.Error, $"Error reading subdirectories of '{currentLocalDir}': {ex.Message}");
+        }
+    }
+
+    private async Task ProcessScanChannelWorkerAsync(ChannelReader<ScanFileEvent> reader, CancellationToken cancellationToken)
+    {
+        try
+        {
+            // ReadAllAsync reads continuously and exits cleanly once the channel is completed
+            await foreach (var fileEvent in reader.ReadAllAsync(cancellationToken))
             {
                 try
                 {
-                    string remoteFilePath = GetRemotePath(localFilePath, localDir);
-                    await ReconcileFileAsync(localFilePath, remoteFilePath, ct);
-
+                    string remoteFilePath = GetRemotePath(fileEvent.LocalPath, fileEvent.LocalRootPath);
+                    await ReconcileFileAsync(fileEvent.LocalPath, remoteFilePath, cancellationToken);
+                }
+                catch (OperationCanceledException)
+                {
+                    throw;
+                }
+                catch (Exception ex)
+                {
+                    Logger.Log(LogLevel.Error, $"Error reconciling file '{fileEvent.LocalPath}': {ex.Message}");
+                }
+                finally
+                {
                     Interlocked.Increment(ref _filesProcessed);
                     State.FilesProcessed = _filesProcessed;
                 }
-                catch (OperationCanceledException) { }
-            });
+            }
+        }
+        catch (OperationCanceledException)
+        {
+            // Worker stopped cleanly
         }
     }
 
@@ -301,6 +384,7 @@ public abstract class LocalToCloudJobBase : JobBase
                 cancellationToken);
         }
     }
+
     private async Task WalkAndDeleteOrphansAsync(
         string currentRemoteFolder,
         string originalRemoteRoot,
@@ -670,14 +754,14 @@ public abstract class LocalToCloudJobBase : JobBase
         return folderName;
     }
 
-
     #endregion
 
     #region Internal Structs
 
+    private readonly record struct ScanFileEvent(string LocalPath, string LocalRootPath);
     private enum FileEventType
     {
-        Created, 
+        Created,
         Changed,
         Deleted,
         Renamed

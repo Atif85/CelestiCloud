@@ -17,6 +17,7 @@ public class LogMessage
     {
         LogLevel.Debug => "#888888",  // Gray
         LogLevel.Info => "#00BFFF",   // Deep Sky Blue
+        LogLevel.Warning => "#FFCC00",    // Warning Yellow / Amber
         LogLevel.Error => "#FF4500",  // Orange Red
         _ => "#FFFFFF"
     };
