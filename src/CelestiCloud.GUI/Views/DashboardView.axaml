@@ -6,15 +6,12 @@
              x:DataType="vm:DashboardViewModel">
     
     <Grid>
-        <Border Background="{DynamicResource ContentBackgroundBrush}" Padding="24">
+        <Border Background="{DynamicResource AppBackgroundBrush}" Padding="24">
             <Grid RowDefinitions="Auto, *">
                 
                 <!-- HEADER BAR -->
                 <Grid Grid.Row="0" ColumnDefinitions="*, Auto, Auto, Auto" Margin="0,0,0,20">
-                    <StackPanel Grid.Column="0" Spacing="4">
-                        <TextBlock Text="Dashboard" FontSize="24" FontWeight="Bold" Foreground="{DynamicResource TextPrimaryBrush}"/>
-                        <TextBlock Text="Live active synchronizations" Foreground="{DynamicResource TextSecondaryBrush}"/>
-                    </StackPanel>
+                    <TextBlock Text="Dashboard" FontSize="24" FontWeight="Bold" Foreground="{DynamicResource TextPrimaryBrush}"/>
 
                     <!-- Live Stats Display -->
                     <StackPanel Grid.Column="1" Orientation="Horizontal" Spacing="20" VerticalAlignment="Center" Margin="0,0,24,0">
@@ -43,7 +40,7 @@
                             <Style Selector="ItemsControl:empty">
                                 <Setter Property="Template">
                                     <ControlTemplate>
-                                        <TextBlock Text="No uploads are currently running." 
+                                        <TextBlock Text="No jobs are currently running." 
                                                    Foreground="{DynamicResource TextSecondaryBrush}"    
                                                    HorizontalAlignment="Center" 
                                                    Margin="0,50,0,0"/>
@@ -77,8 +74,22 @@
                                         <Separator Background="{DynamicResource DividerBrush}"/>
 
                                         <!-- Currently Uploading Files (ActiveTransfers Dictionary) -->
-                                        <!-- Because ActiveTransfers is a ConcurrentDictionary, we bind to it. -->
                                         <ItemsControl ItemsSource="{Binding State.ActiveTransfers}">
+                                            <!-- Inner Empty State -->
+                                            <ItemsControl.Styles>
+                                                <Style Selector="ItemsControl:empty">
+                                                    <Setter Property="Template">
+                                                        <ControlTemplate>
+                                                            <TextBlock Text="No uploads are currently running." 
+                                                                       Foreground="{DynamicResource TextSecondaryBrush}"
+                                                                       HorizontalAlignment="Center"
+                                                                       VerticalAlignment="Center"
+                                                                       Margin="0,30"/>
+                                                        </ControlTemplate>
+                                                    </Setter>
+                                                </Style>
+                                            </ItemsControl.Styles>
+
                                             <ItemsControl.ItemTemplate>
                                                 <!-- The Key is the filename, the Value is the progress double (0.0 to 1.0) -->
                                                 <DataTemplate>

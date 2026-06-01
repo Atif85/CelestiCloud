@@ -13,7 +13,7 @@
     
     <Grid>
         <!-- LAYER 0: MAIN ACCOUNTS LIST SCREEN -->
-        <Border Background="{DynamicResource ContentBackgroundBrush}" Padding="24">
+        <Border Background="{DynamicResource AppBackgroundBrush}" Padding="24">
             <Grid RowDefinitions="Auto, *, Auto">
                 
                 <!-- Screen Title -->

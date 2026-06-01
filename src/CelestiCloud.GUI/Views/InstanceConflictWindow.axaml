@@ -1,0 +1,55 @@
+﻿<Window xmlns="https://github.com/avaloniaui"
+        xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+        x:Class="CelestiCloud.GUI.Views.InstanceConflictWindow"
+        Title="CelestiCloud - Instance Conflict"
+        Width="400" Height="250"
+        WindowStartupLocation="CenterScreen"
+        CanResize="False"
+        Background="{DynamicResource AppBackgroundBrush}">
+    
+    <Border Padding="24">
+        <Grid RowDefinitions="Auto, *, Auto">
+            
+            <!-- Warning Header -->
+            <StackPanel Grid.Row="0" Orientation="Horizontal" Spacing="10" Margin="0,10,0,0">
+                <TextBlock Text="⚠️" FontSize="24"/>
+                <TextBlock Text="Another Instance is Running" 
+                           FontSize="18" 
+                           FontWeight="Bold" 
+                           Foreground="{DynamicResource TextPrimaryBrush}" 
+                           VerticalAlignment="Center"/>
+            </StackPanel>
+            
+            <!-- Description -->
+            <TextBlock Grid.Row="1" 
+                       Text="CelestiCloud is already running on this machine. Running multiple instances simultaneously is not recommended." 
+                       TextWrapping="Wrap" 
+                       Foreground="{DynamicResource TextSecondaryBrush}" 
+                       FontSize="15" 
+                       Margin="0,12,0,0"/>
+            
+            <!-- Action Footer -->
+            <Grid Grid.Row="2" ColumnDefinitions="*, Auto" Margin="0,10,0,0">
+                <!-- Close Other -->
+                <Button Grid.Column="0" 
+                        Content="Close Other Instance" 
+                        Click="OnCloseOtherClick"
+                        Classes="danger"
+                        Padding="14,8" 
+                        Cursor="Hand"/>
+                
+                <!-- Exit This -->
+                <Button Grid.Column="1" 
+                        Content="Exit This" 
+                        Click="OnExitClick"
+                        Background="{DynamicResource SidebarBackgroundBrush}"
+                        Foreground="{DynamicResource TextPrimaryBrush}"
+                        BorderBrush="{DynamicResource DividerBrush}"
+                        BorderThickness="1"
+                        CornerRadius="6"
+                        Padding="16,8" 
+                        Cursor="Hand"/>
+            </Grid>
+        </Grid>
+    </Border>
+</Window>

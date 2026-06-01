@@ -12,6 +12,8 @@ using CelestiCloud.GUI.Logging;
 using CelestiCloud.GUI.ViewModels;
 using CelestiCloud.GUI.Views;
 using System;
+using System.Diagnostics;
+using System.Linq;
 using System.Threading.RateLimiting;
 
 namespace CelestiCloud.GUI;
@@ -26,61 +28,107 @@ public partial class App : Application
         AvaloniaXamlLoader.Load(this);
     }
 
-    public override void OnFrameworkInitializationCompleted()
+    public override async void OnFrameworkInitializationCompleted()
     {
         if (ApplicationLifetime is IClassicDesktopStyleApplicationLifetime desktop)
         {
-            // Initialize Core Services
-            var configManager = new ConfigManager();
-            var providerFactory = new ProviderFactory(configManager);
+            // 1. Check for other active instances of the same process
+            var currentProcess = Process.GetCurrentProcess();
+            var runningInstances = Process.GetProcessesByName(currentProcess.ProcessName)
+                .Where(p => p.Id != currentProcess.Id)
+                .ToList();
 
-            // Load Settings & Limiter
-            var appSettings = configManager.LoadSettings();
-            int uploadLimit = appSettings.GlobalUploadLimitKbps;
-            RateLimiter? limiter = (uploadLimit > 0)
-                ? BandwidthLimiterFactory.CreateLimiter(uploadLimit * 1024)
-                : null;
-
-            IJobLogger fileLogger = new FileLogger(configManager.GetAppDataPath(), "CelestiCloud_GUI");
-
-            var uiLogger = new ObservableUiLogger(fileLogger);
-
-            // Create the Global Job Engine 
-            var jobEngine = new JobEngine(configManager, providerFactory, limiter, uiLogger);
-
-            _ = jobEngine.StartAutoStartJobsAsync();
-
-            _mainWindow = new MainWindow
+            if (runningInstances.Any())
             {
-                DataContext = new MainWindowViewModel(configManager, providerFactory , jobEngine, uiLogger),
-            };
+                // 2. Conflict detected! Show the tiny decision window first
+                var conflictWindow = new InstanceConflictWindow();
+                desktop.MainWindow = conflictWindow;
+                conflictWindow.Show();
 
-            CreateTrayIcon(_mainWindow, jobEngine);
+                var decision = await conflictWindow.GetDecisionAsync();
 
-            // Handle start minimized check (for startup folder launches)
-            bool startMinimized = desktop.Args != null && desktop.Args.Contains("--minimized");
-            if (startMinimized)
-            {
-                _mainWindow.WindowState = WindowState.Minimized;
-                // Wait for the window to draw, then immediately hide it to tray
-                Dispatcher.UIThread.Post(() => _mainWindow.Hide(), DispatcherPriority.ApplicationIdle);
+                if (decision == InstanceDecision.CloseOther)
+                {
+                    // Forcefully terminate old processes
+                    foreach (var oldInstance in runningInstances)
+                    {
+                        try
+                        {
+                            oldInstance.Kill();
+                            oldInstance.WaitForExit(3000); // Wait up to 3 seconds for clean process release
+                        }
+                        catch { /* Ignore if access is denied or process already exited */ }
+                    }
+
+                    // 3. Launch the main normal app
+                    InitializeNormalApp(desktop);
+                }
+                else
+                {
+                    // Exit this instance
+                    desktop.Shutdown();
+                }
             }
             else
             {
-                _mainWindow.Show();
+                // No conflict, boot normally
+                InitializeNormalApp(desktop);
             }
-
-            desktop.MainWindow = _mainWindow;
-
-            desktop.Exit += async (sender, args) =>
-            {
-                _trayIcon?.Dispose(); // Safely removes the icon from the system taskbar on exit
-                await jobEngine.StopAllAsync();
-            };
         }
 
         base.OnFrameworkInitializationCompleted();
     }
+
+    private void InitializeNormalApp(IClassicDesktopStyleApplicationLifetime desktop)
+    {
+        // Initialize Core Services
+        var configManager = new ConfigManager();
+        var providerFactory = new ProviderFactory(configManager);
+
+        // Load Settings & Limiter
+        var appSettings = configManager.LoadSettings();
+        int uploadLimit = appSettings.GlobalUploadLimitKbps;
+        RateLimiter? limiter = (uploadLimit > 0)
+            ? BandwidthLimiterFactory.CreateLimiter(uploadLimit * 1024)
+            : null;
+
+        IJobLogger fileLogger = new FileLogger(configManager.GetAppDataPath(), "CelestiCloud_GUI");
+        var uiLogger = new ObservableUiLogger(fileLogger);
+
+        // Create the Global Job Engine 
+        var jobEngine = new JobEngine(configManager, providerFactory, limiter, uiLogger);
+
+        _ = jobEngine.StartAutoStartJobsAsync();
+
+        _mainWindow = new MainWindow
+        {
+            DataContext = new MainWindowViewModel(configManager, providerFactory, jobEngine, uiLogger),
+        };
+
+        CreateTrayIcon(_mainWindow, jobEngine);
+
+        // Handle start minimized check (for startup folder launches)
+        bool startMinimized = desktop.Args != null && desktop.Args.Contains("--minimized");
+        if (startMinimized)
+        {
+            _mainWindow.WindowState = WindowState.Minimized;
+            // Wait for the window to draw, then immediately hide it to tray
+            Dispatcher.UIThread.Post(() => _mainWindow.Hide(), DispatcherPriority.ApplicationIdle);
+        }
+        else
+        {
+            _mainWindow.Show();
+        }
+
+        desktop.MainWindow = _mainWindow;
+
+        desktop.Exit += async (sender, args) =>
+        {
+            _trayIcon?.Dispose(); // Safely removes the icon from the system taskbar on exit
+            await jobEngine.StopAllAsync();
+        };
+    }
+
 
     private void CreateTrayIcon(MainWindow window, JobEngine engine)
     {

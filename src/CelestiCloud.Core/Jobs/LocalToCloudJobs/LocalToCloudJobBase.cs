@@ -168,7 +168,8 @@ public abstract class LocalToCloudJobBase : JobBase
                 .ToList();
 
             Interlocked.Add(ref _filesFound, eligibleFiles.Count);
-            State.FilesFound = _filesFound;
+            State.
+                FilesFound = _filesFound;
 
             Logger.Log(LogLevel.Debug, $"Found {eligibleFiles.Count} eligible files in {localDir}. Checking remote state...");
 

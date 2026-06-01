@@ -6,7 +6,7 @@
 
     <Grid>
         <!-- LAYER 0: MAIN JOBS LIST SCREEN -->
-        <Border Background="{DynamicResource ContentBackgroundBrush}" Padding="24">
+        <Border Background="{DynamicResource AppBackgroundBrush}" Padding="24">
             <Grid RowDefinitions="Auto, *, Auto">
                 
                 <TextBlock Grid.Row="0" Text="Configured Jobs" FontSize="24" FontWeight="Bold" Foreground="{DynamicResource TextPrimaryBrush}" Margin="0,0,0,20"/>

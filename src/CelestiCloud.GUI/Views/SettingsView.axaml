@@ -4,7 +4,7 @@
              x:Class="CelestiCloud.GUI.Views.SettingsView"
              x:DataType="vm:SettingsViewModel">
 
-    <Border Background="{DynamicResource ContentBackgroundBrush}" Padding="24">
+    <Border Background="{DynamicResource AppBackgroundBrush}" Padding="24">
         <StackPanel Spacing="30">
             
             <TextBlock Text="Settings" FontSize="24" FontWeight="Bold" Foreground="{DynamicResource TextPrimaryBrush}"/>

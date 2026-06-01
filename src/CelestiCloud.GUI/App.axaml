@@ -58,7 +58,6 @@
                 <ResourceDictionary x:Key="Dark">
                     <SolidColorBrush x:Key="AppBackgroundBrush">#121212</SolidColorBrush>
                     <SolidColorBrush x:Key="SidebarBackgroundBrush">#1c1c1e</SolidColorBrush>
-                    <SolidColorBrush x:Key="ContentBackgroundBrush">#1e1e1e</SolidColorBrush>
                     <SolidColorBrush x:Key="DividerBrush">#2c2c2e</SolidColorBrush>
                     
                     <SolidColorBrush x:Key="TextPrimaryBrush">#ffffff</SolidColorBrush>
@@ -86,7 +85,6 @@
                 <ResourceDictionary x:Key="Light">
                     <SolidColorBrush x:Key="AppBackgroundBrush">#f3f4f6</SolidColorBrush>
                     <SolidColorBrush x:Key="SidebarBackgroundBrush">#ffffff</SolidColorBrush>
-                    <SolidColorBrush x:Key="ContentBackgroundBrush">#ffffff</SolidColorBrush>
                     <SolidColorBrush x:Key="DividerBrush">#e5e7eb</SolidColorBrush>
                     
                     <SolidColorBrush x:Key="TextPrimaryBrush">#111827</SolidColorBrush>
