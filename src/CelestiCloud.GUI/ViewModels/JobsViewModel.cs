@@ -33,11 +33,26 @@ public partial class JobsViewModel : ViewModelBase
     private JobConfig? _selectedJobDetails;
 
     [ObservableProperty]
+    [NotifyPropertyChangedFor(nameof(IsStartButtonVisible))]
+    [NotifyPropertyChangedFor(nameof(IsStopButtonVisible))]
     private bool _isSelectedJobRunning;
+
+    [ObservableProperty]
+    [NotifyPropertyChangedFor(nameof(IsStartButtonVisible))]
+    [NotifyPropertyChangedFor(nameof(IsStopButtonVisible))]
+    [NotifyPropertyChangedFor(nameof(IsProcessingButtonVisible))]
+    private bool _isTogglingState;
+
+    public bool IsStartButtonVisible => !IsSelectedJobRunning && !IsTogglingState;
+    public bool IsStopButtonVisible => IsSelectedJobRunning && !IsTogglingState;
+    public bool IsProcessingButtonVisible => IsTogglingState;
 
     // --- EDIT STATE ---
     [ObservableProperty]
     private JobConfig? _editingJob;
+
+    [ObservableProperty]
+    private AccountConfig? _editingTargetAccount;
 
     [ObservableProperty]
     private ObservableCollection<string> _editingLocalPaths = [];
@@ -133,18 +148,27 @@ public partial class JobsViewModel : ViewModelBase
     [RelayCommand]
     private async Task ToggleSelectedJobState()
     {
-        if (SelectedJobDetails == null) return;
+        if (SelectedJobDetails == null || IsTogglingState) return;
 
-        if (IsSelectedJobRunning)
-        {
-            await _jobEngine.StopJobAsync(SelectedJobDetails.Id);
-        }
-        else
-        {
-            await _jobEngine.StartJobAsync(SelectedJobDetails.Id);
-        }
+        IsTogglingState = true;
 
-        IsSelectedJobRunning = !IsSelectedJobRunning; // Instant UI feedback
+        try
+        {
+            if (IsSelectedJobRunning)
+            {
+                await _jobEngine.StopJobAsync(SelectedJobDetails.Id);
+            }
+            else
+            {
+                await _jobEngine.StartJobAsync(SelectedJobDetails.Id);
+            }
+
+            IsSelectedJobRunning = !IsSelectedJobRunning;
+        }
+        finally
+        {
+            IsTogglingState = false;
+        }
     }
 
 
@@ -152,10 +176,9 @@ public partial class JobsViewModel : ViewModelBase
     private void OpenAddJob()
     {
         IsCreatingNew = true;
-        EditingJob = new JobConfig
-        {
-            TargetAccountId = AvailableAccounts.FirstOrDefault()?.Id ?? string.Empty
-        };
+        EditingJob = new JobConfig();
+
+        EditingTargetAccount = AvailableAccounts.FirstOrDefault();
 
         EditingLocalPaths.Clear();
         EditingIgnorePatterns.Clear();
@@ -187,6 +210,8 @@ public partial class JobsViewModel : ViewModelBase
             IgnorePatterns = [.. SelectedJobDetails.IgnorePatterns]
         };
 
+        EditingTargetAccount = AvailableAccounts.FirstOrDefault(a => a.Id == SelectedJobDetails.TargetAccountId);
+
         EditingLocalPaths = new ObservableCollection<string>(SelectedJobDetails.LocalPaths);
         EditingIgnorePatterns = new ObservableCollection<string>(SelectedJobDetails.IgnorePatterns);
 
@@ -206,6 +231,14 @@ public partial class JobsViewModel : ViewModelBase
             IsViewModalOpen = true;
         }
     }
+
+    partial void OnEditingTargetAccountChanged(AccountConfig? value)
+{
+    if (EditingJob != null && value != null)
+    {
+        EditingJob.TargetAccountId = value.Id;
+    }
+}
 
     [RelayCommand]
     private void AddLocalPath()

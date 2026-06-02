@@ -24,8 +24,6 @@ public class ThrottledStream : Stream
         _limiter = limiter;
         _maxChunkSize = maxChunkSize;
         _leaveOpen = leaveOpen;
-
-        System.Diagnostics.Debug.WriteLine($"[ThrottledStream] Created. Is Limiter Null? {limiter == null}. Max Chunk Size: {maxChunkSize} bytes");
     }
 
     public override bool CanRead => _baseStream.CanRead;
@@ -190,7 +188,6 @@ public class ThrottledStream : Stream
     {
         if (_limiter == null)
         {
-            System.Diagnostics.Debug.WriteLine("[ThrottledStream] ReadAsync bypassing limiter (Limiter is null)");
             int readDirect = await _baseStream.ReadAsync(buffer, cancellationToken);
             if (readDirect > 0) BandwidthMonitor.RecordBytes(readDirect);
             return readDirect;
