@@ -271,9 +271,27 @@
                                             </DataTemplate>
                                         </ItemsControl.ItemTemplate>
                                     </ItemsControl>
-                                    <Grid ColumnDefinitions="*, Auto" Margin="0,4,0,0">
-                                        <TextBox Grid.Column="0" PlaceholderText="Add full path (e.g. C:\Docs)" Text="{Binding $parent[UserControl].((vm:JobsViewModel)DataContext).NewLocalPathInput}" Margin="0,0,8,0"/>
-                                        <Button Grid.Column="1" Content="Add" Command="{Binding $parent[UserControl].((vm:JobsViewModel)DataContext).AddLocalPathCommand}" CornerRadius="6"/>
+                                    <Grid ColumnDefinitions="*, Auto, Auto" Margin="0,4,0,0">
+                                        <!-- Path Input Textbox -->
+                                        <TextBox Grid.Column="0" 
+                                                    PlaceholderText="Add full path (e.g. C:\Docs)" 
+                                                    Text="{Binding $parent[UserControl].((vm:JobsViewModel)DataContext).NewLocalPathInput}" 
+                                                    Margin="0,0,8,0"/>
+    
+                                        <!-- Browse Button -->
+                                        <Button Grid.Column="1" 
+                                                Content="Browse..." 
+                                                Command="{Binding $parent[UserControl].((vm:JobsViewModel)DataContext).BrowseLocalPathCommand}" 
+                                                Margin="0,0,8,0" 
+                                                CornerRadius="6"
+                                                Cursor="Hand"/>
+    
+                                        <!-- Add Button -->
+                                        <Button Grid.Column="2" 
+                                                Content="Add" 
+                                                Command="{Binding $parent[UserControl].((vm:JobsViewModel)DataContext).AddLocalPathCommand}" 
+                                                CornerRadius="6"
+                                                Cursor="Hand"/>
                                     </Grid>
                                 </StackPanel>
 

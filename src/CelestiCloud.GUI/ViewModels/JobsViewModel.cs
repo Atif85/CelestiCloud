@@ -1,13 +1,17 @@
 ﻿using Avalonia.Threading;
 using CelestiCloud.Core.Config;
-using CelestiCloud.Core.Models;
 using CelestiCloud.Core.Jobs;
+using CelestiCloud.Core.Models;
 using CommunityToolkit.Mvvm.ComponentModel;
 using CommunityToolkit.Mvvm.Input;
 using System;
 using System.Collections.ObjectModel;
 using System.Linq;
 using System.Threading.Tasks;
+using Avalonia;
+using Avalonia.Controls;
+using Avalonia.Controls.ApplicationLifetimes;
+using Avalonia.Platform.Storage;
 
 namespace CelestiCloud.GUI.ViewModels;
 
@@ -258,5 +262,32 @@ public partial class JobsViewModel : ViewModelBase
         LoadData();
         IsEditModalOpen = false;
         SelectedJobDetails = null;
+    }
+
+    [RelayCommand]
+    private async Task BrowseLocalPathAsync()
+    {
+        if (Application.Current?.ApplicationLifetime is IClassicDesktopStyleApplicationLifetime desktop)
+        {
+            var topLevel = TopLevel.GetTopLevel(desktop.MainWindow);
+
+            if (topLevel != null)
+            {
+                // Open the native operating system's folder selection dialog
+                var result = await topLevel.StorageProvider.OpenFolderPickerAsync(new FolderPickerOpenOptions
+                {
+                    Title = "Select Folder to Sync",
+                    AllowMultiple = false
+                });
+
+                if (result != null && result.Count > 0)
+                {
+                    // Convert the storage path URI to a standard, absolute local OS path 
+                    string selectedPath = result[0].Path.LocalPath;
+
+                    NewLocalPathInput = selectedPath;
+                }
+            }
+        }
     }
 }
