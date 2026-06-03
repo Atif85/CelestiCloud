@@ -21,9 +21,12 @@ public abstract class LocalToCloudJobBase : JobBase
     private readonly IgnoreFilter _ignoreFilter;
     private readonly List<FileSystemWatcher> _watchers = [];
     private Channel<FileEvent>? _eventChannel;
+
     private readonly ConcurrentDictionary<string, CancellationTokenSource> _debounceTicks = [];
     private readonly ConcurrentDictionary<string, Dictionary<string, CloudFile>> _remoteDirectoryCache = new(StringComparer.OrdinalIgnoreCase);
-    private readonly SemaphoreSlim _cacheLock = new(1, 1);
+
+    private readonly ConcurrentDictionary<string, SemaphoreSlim> _directoryLocks = new(StringComparer.OrdinalIgnoreCase);
+
     private int _filesFound;
     private int _filesProcessed;
     private readonly Dictionary<string, string> _folderNameCache = new(StringComparer.OrdinalIgnoreCase);
@@ -324,7 +327,8 @@ public abstract class LocalToCloudJobBase : JobBase
             return cachedDir;
         }
 
-        await _cacheLock.WaitAsync(cancellationToken);
+        var directoryLock = GetDirectoryLock(remoteFolderPath);
+        await directoryLock.WaitAsync(cancellationToken);
         try
         {
             if (_remoteDirectoryCache.TryGetValue(remoteFolderPath, out cachedDir))
@@ -332,30 +336,35 @@ public abstract class LocalToCloudJobBase : JobBase
                 return cachedDir;
             }
 
-            // Verify folder exists before querying children
-            bool folderExists = await Provider.FileExistsAsync(remoteFolderPath);
             var fileMap = new Dictionary<string, CloudFile>(StringComparer.OrdinalIgnoreCase);
 
-            if (folderExists)
+            try
             {
                 var files = await Provider.ListFilesAsync(remoteFolderPath);
-                foreach (var file in files)
+
+                if (files != null)
                 {
-                    fileMap[file.Name] = file;
+                    foreach (var file in files)
+                    {
+                        fileMap[file.Name] = file;
+                    }
                 }
+            }
+            catch (DirectoryNotFoundException)
+            {
+                
+            }
+            catch (Exception ex)
+            {
+                Logger.Log(LogLevel.Error, $"Failed to list remote directory '{remoteFolderPath}': {ex.Message}");
             }
 
             _remoteDirectoryCache[remoteFolderPath] = fileMap;
             return fileMap;
         }
-        catch (Exception ex)
-        {
-            Logger.Log(LogLevel.Error, $"Failed to list remote directory '{remoteFolderPath}': {ex.Message}");
-            return new Dictionary<string, CloudFile>(StringComparer.OrdinalIgnoreCase);
-        }
         finally
         {
-            _cacheLock.Release();
+            directoryLock.Release();
         }
     }
 
@@ -752,6 +761,11 @@ public abstract class LocalToCloudJobBase : JobBase
         }
 
         return folderName;
+    }
+
+    private SemaphoreSlim GetDirectoryLock(string path)
+    {
+        return _directoryLocks.GetOrAdd(path, _ => new SemaphoreSlim(1, 1));
     }
 
     #endregion
