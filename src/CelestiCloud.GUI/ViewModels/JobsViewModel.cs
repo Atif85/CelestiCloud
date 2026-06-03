@@ -12,6 +12,7 @@ using Avalonia;
 using Avalonia.Controls;
 using Avalonia.Controls.ApplicationLifetimes;
 using Avalonia.Platform.Storage;
+using CelestiCloud.GUI.Logging;
 
 namespace CelestiCloud.GUI.ViewModels;
 
@@ -80,7 +81,7 @@ public partial class JobsViewModel : ViewModelBase
 
     public bool IsDimmerVisible => IsViewModalOpen || IsEditModalOpen;
 
-    public JobsViewModel(ConfigManager configManager, JobEngine jobEngine)
+    public JobsViewModel(ConfigManager configManager, JobEngine jobEngine, ObservableUiLogger uiLogger)
     {
         _configManager = configManager;
         _jobEngine = jobEngine;

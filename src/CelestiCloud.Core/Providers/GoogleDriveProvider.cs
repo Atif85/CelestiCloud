@@ -18,13 +18,17 @@ public class GoogleDriveProvider : ICloudProvider
     private DriveService? _service;
 
     private readonly ConcurrentDictionary<string, string> _folderCache = new();
-    private readonly ConcurrentDictionary<string, Lazy<Task<string?>>> _folderResolutionTasks = new(StringComparer.OrdinalIgnoreCase);
+    private readonly ConcurrentDictionary<string, Lazy<Task<string?>>> _resolutionTasks = new(StringComparer.OrdinalIgnoreCase);
 
     private const string FolderMimeType = "application/vnd.google-apps.folder";
     private static readonly string[] Scopes = 
     [
         DriveService.Scope.DriveFile
     ];
+
+    private const int SmallFileThreshold = 4 * 1024 * 1024;   // 4 MB
+    private const int SmallChunkSize = ResumableUpload.MinimumChunkSize;      // 256 KB
+    private const int LargeChunkSize = ResumableUpload.MinimumChunkSize * 16; // 4 MB
 
     public GoogleDriveProvider(string tokenDirectoryPath)
     {
@@ -86,36 +90,50 @@ public class GoogleDriveProvider : ICloudProvider
         return about.User?.EmailAddress ?? "unknown-email";
     }
 
-    public async Task UploadFileAsync(Stream sourceStream, string remotePath, IProgress<double>? progress = null, CancellationToken cancellationToken = default)
+    public async Task UploadFileAsync(
+        Stream sourceStream,
+        string remotePath,
+        string? existingFileId = null, 
+        bool assumeNew = false,
+        IProgress<double>? progress = null, 
+        CancellationToken cancellationToken = default)
     {
         EnsureConnected();
-      
+
         // Split the remote path to get the parent folder path and the file name
         string[] segments = remotePath.Split(['/', '\\'], StringSplitOptions.RemoveEmptyEntries);
 
         string fileName = segments.Last();
         string parentPath = string.Join("/", segments.Take(segments.Length - 1));
 
-        // Ensure the remote directory exists (creates it if it doesn't)
-        string parentFolderId = await ResolvePathToIdAsync(parentPath, createIfMissing: true)
-                                ?? throw new Exception("Failed to resolve or create remote parent folder.");
+        string? fileId = existingFileId;
 
-        // Check if file already exists so we know whether to Create or Update
-        string? existingFileId = await ResolvePathToIdAsync(remotePath);
+        if (!assumeNew && fileId == null)
+        {
+            fileId = await ResolvePathToIdAsync(remotePath);
+        }
 
-        bool remoteFileExists = existingFileId != null;
+        bool remoteFileExists = fileId != null;
 
         var fileMetadata = new DriveFile { Name = fileName };
         string mimeType = GetMimeType(remotePath);
+
+        int chunkSize = sourceStream.CanSeek && sourceStream.Length < SmallFileThreshold
+             ? SmallChunkSize
+             : LargeChunkSize;
 
         ResumableUpload<DriveFile, DriveFile> uploadRequest;
 
         if (remoteFileExists)
         {
-            uploadRequest = _service!.Files.Update(fileMetadata, existingFileId, sourceStream, mimeType);
+            uploadRequest = _service!.Files.Update(fileMetadata, fileId!, sourceStream, mimeType);
         }
         else
         {
+            // Ensure the remote directory exists (creates it if it doesn't)
+            string parentFolderId = await ResolvePathToIdAsync(parentPath, createIfMissing: true)
+                                    ?? throw new Exception("Failed to resolve or create remote parent folder.");
+
             fileMetadata.Parents = [parentFolderId];
             uploadRequest = _service!.Files.Create(fileMetadata, sourceStream, mimeType);
         }
@@ -254,24 +272,51 @@ public class GoogleDriveProvider : ICloudProvider
         string? folderId = await ResolvePathToIdAsync(remotePath);
         if (folderId == null) return [];
 
-        var request = _service!.Files.List();
-        request.Q = $"'{folderId}' in parents and trashed = false";
-        request.Fields = "files(id, name, mimeType, size, modifiedTime)";
-
-        var result = await request.ExecuteAsync();
         var files = new List<CloudFile>();
+        string? pageToken = null;
 
-        foreach (var file in result.Files)
+        string cleanRemotePath = remotePath.Replace('\\', '/').Trim('/');
+
+        do
         {
-            files.Add(new CloudFile
+            var request = _service!.Files.List();
+            request.Q = $"'{folderId}' in parents and trashed = false";
+            request.Fields = "nextPageToken, files(id, name, mimeType, size, modifiedTime)";
+            request.PageSize = 1000; // was default 100 — reduces round-trips for large folders
+            if (pageToken != null) request.PageToken = pageToken;
+
+            var result = await request.ExecuteAsync();
+
+            foreach (var file in result.Files)
             {
-                Id = file.Id,
-                Name = file.Name,
-                IsFolder = file.MimeType == FolderMimeType,
-                Size = file.Size,
-                ModifiedDate = file.ModifiedTimeDateTimeOffset?.DateTime
-            });
+                var isFolder = file.MimeType == FolderMimeType;
+
+                // Opportunistically populate the cache while we're here
+                if (isFolder)
+                {
+                    var childPath = string.IsNullOrEmpty(cleanRemotePath)
+                        ? file.Name
+                        : $"{cleanRemotePath}/{file.Name}";
+
+                    if (!_folderCache.ContainsKey(childPath))
+                    {
+                        _folderCache.TryAdd(childPath, file.Id);
+                    }
+                }
+
+                files.Add(new CloudFile
+                {
+                    Id = file.Id,
+                    Name = file.Name,
+                    IsFolder = isFolder,
+                    Size = file.Size,
+                    ModifiedDate = file.ModifiedTimeDateTimeOffset?.DateTime
+                });
+            }
+
+            pageToken = result.NextPageToken;
         }
+        while (pageToken != null);
 
         return files;
     }
@@ -312,14 +357,12 @@ public class GoogleDriveProvider : ICloudProvider
             string pathSnapshot = currentPath;
             string parentIdSnapshot = currentParentId;
 
-            Lazy<Task<string?>> lazyTask = _folderResolutionTasks.GetOrAdd(taskKey, _ =>
+            Lazy<Task<string?>> lazyTask = _resolutionTasks.GetOrAdd(taskKey, _ =>
             {
                 return new Lazy<Task<string?>>(() =>
                     ResolveSegmentInternalAsync(pathSnapshot, segment, parentIdSnapshot, canUseCache, createIfMissing)
                 );
             });
-
-            currentParentId = await lazyTask.Value;
 
             try
             {
@@ -327,7 +370,7 @@ public class GoogleDriveProvider : ICloudProvider
             }
             finally
             {
-                _folderResolutionTasks.TryRemove(taskKey, out _);
+                _resolutionTasks.TryRemove(taskKey, out _);
             }
 
             if (currentParentId == null)

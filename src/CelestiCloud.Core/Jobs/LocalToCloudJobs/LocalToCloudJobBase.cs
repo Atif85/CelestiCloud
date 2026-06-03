@@ -88,11 +88,19 @@ public abstract class LocalToCloudJobBase : JobBase
                     Logger.Log(LogLevel.Debug, "Starting file reconciliation pass...");
                     _remoteDirectoryCache.Clear();
 
-                    await ReconcileAndUploadAsync(cancellationToken);
-
-                    if (AllowDeletions)
+                    try
                     {
-                        await CleanupOrphanedRemoteFilesAsync(cancellationToken);
+                        await ReconcileAndUploadAsync(cancellationToken);
+
+                        if (AllowDeletions)
+                        {
+                            await CleanupOrphanedRemoteFilesAsync(cancellationToken);
+                        }
+                    }
+                    finally
+                    {
+                        _remoteDirectoryCache.Clear();
+                        Logger.Log(LogLevel.Debug, "Memory optimized: Cleared remote directory metadata cache.");
                     }
 
                     Logger.Log(LogLevel.Debug, $"Pass complete. Next full run scheduled in {interval.TotalMinutes} minutes.");
@@ -280,20 +288,20 @@ public abstract class LocalToCloudJobBase : JobBase
         }
     }
 
-    private async Task ReconcileFileAsync(string localPath, string remotePath, CancellationToken cancellationToken)
+    private async Task ReconcileFileAsync(string localPath, string remotePath, CancellationToken ct)
     {
         var localInfo = new FileInfo(localPath);
         string parentRemoteFolder = Path.GetDirectoryName(remotePath)?.Replace('\\', '/') ?? "/";
         string fileName = Path.GetFileName(remotePath);
 
         // Fetch directories using local cache
-        var directoryFiles = await GetCachedRemoteDirectoryAsync(parentRemoteFolder, cancellationToken);
+        var directoryFiles = await GetCachedRemoteDirectoryAsync(parentRemoteFolder, ct);
 
-        // If file doesn't exist in our folder metadata cache, treat it as new [3]
+        // If file doesn't exist in our folder metadata cache, treat it as new
         if (!directoryFiles.TryGetValue(fileName, out var targetRemoteFile) || targetRemoteFile.IsFolder)
         {
             Logger.Log(LogLevel.Info, $"[Upload] New file: {localInfo.Name}");
-            await UploadFileWithThrottlingAsync(localPath, remotePath, cancellationToken);
+            await UploadFileWithThrottlingAsync(localPath, remotePath, null, assumeNew: true, ct);
             return;
         }
 
@@ -312,7 +320,7 @@ public abstract class LocalToCloudJobBase : JobBase
         if (sizeChanged || isLocalNewer)
         {
             Logger.Log(LogLevel.Info, $"[Update] Modified file: {localInfo.Name}");
-            await UploadFileWithThrottlingAsync(localPath, remotePath, cancellationToken);
+            await UploadFileWithThrottlingAsync(localPath, remotePath, targetRemoteFile.Id, assumeNew: false, ct);
         }
         else
         {
@@ -320,7 +328,7 @@ public abstract class LocalToCloudJobBase : JobBase
         }
     }
 
-    private async Task<Dictionary<string, CloudFile>> GetCachedRemoteDirectoryAsync(string remoteFolderPath, CancellationToken cancellationToken)
+    private async Task<Dictionary<string, CloudFile>> GetCachedRemoteDirectoryAsync(string remoteFolderPath, CancellationToken ct)
     {
         if (_remoteDirectoryCache.TryGetValue(remoteFolderPath, out var cachedDir))
         {
@@ -328,7 +336,7 @@ public abstract class LocalToCloudJobBase : JobBase
         }
 
         var directoryLock = GetStripedLock(remoteFolderPath);
-        await directoryLock.WaitAsync(cancellationToken);
+        await directoryLock.WaitAsync(ct);
         try
         {
             if (_remoteDirectoryCache.TryGetValue(remoteFolderPath, out cachedDir))
@@ -664,7 +672,7 @@ public abstract class LocalToCloudJobBase : JobBase
 
     #region Helper & Utility Methods
 
-    private async Task UploadFileWithThrottlingAsync(string localPath, string remotePath, CancellationToken cancellationToken)
+    private async Task UploadFileWithThrottlingAsync(string localPath, string remotePath, string? existingFileId, bool assumeNew, CancellationToken ct)
     {
         // Retry logic in case the file is still locked by the operating system / editor
         const int maxRetries = 3;
@@ -695,7 +703,7 @@ public abstract class LocalToCloudJobBase : JobBase
 
                     await using var throttledStream = new ThrottledStream(rawFileStream, Limiter, _safeChunkSize);
 
-                    await Provider.UploadFileAsync(throttledStream, remotePath, progressReporter, cancellationToken);
+                    await Provider.UploadFileAsync(throttledStream, remotePath, existingFileId, assumeNew, progressReporter, ct);
                     InvalidateRemoteDirectoryCache(remotePath);
                     return;
                 }
@@ -707,7 +715,7 @@ public abstract class LocalToCloudJobBase : JobBase
                 catch (IOException) when (i < maxRetries - 1)
                 {
                     // File is currently locked; wait a second and retry
-                    await Task.Delay(retryDelayMs, cancellationToken);
+                    await Task.Delay(retryDelayMs, ct);
                 }
             }
         }

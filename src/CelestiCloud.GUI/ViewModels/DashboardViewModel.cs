@@ -39,7 +39,7 @@ public partial class DashboardViewModel : ViewModelBase
 
     public ObservableCollection<LogMessage> LiveLogs { get; }
 
-    public DashboardViewModel(ConfigManager configManager, JobEngine jobEngine, Logging.ObservableUiLogger uiLogger)
+    public DashboardViewModel(ConfigManager configManager, JobEngine jobEngine, ObservableUiLogger uiLogger)
     {
         _configManager = configManager;
         _jobEngine = jobEngine;
