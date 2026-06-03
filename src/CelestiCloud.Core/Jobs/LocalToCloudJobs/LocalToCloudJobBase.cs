@@ -25,7 +25,7 @@ public abstract class LocalToCloudJobBase : JobBase
     private readonly ConcurrentDictionary<string, CancellationTokenSource> _debounceTicks = [];
     private readonly ConcurrentDictionary<string, Dictionary<string, CloudFile>> _remoteDirectoryCache = new(StringComparer.OrdinalIgnoreCase);
 
-    private readonly ConcurrentDictionary<string, SemaphoreSlim> _directoryLocks = new(StringComparer.OrdinalIgnoreCase);
+    private readonly SemaphoreSlim[] _stripedLocks = [.. Enumerable.Range(0, 64).Select(_ => new SemaphoreSlim(1, 1))];
 
     private int _filesFound;
     private int _filesProcessed;
@@ -327,7 +327,7 @@ public abstract class LocalToCloudJobBase : JobBase
             return cachedDir;
         }
 
-        var directoryLock = GetDirectoryLock(remoteFolderPath);
+        var directoryLock = GetStripedLock(remoteFolderPath);
         await directoryLock.WaitAsync(cancellationToken);
         try
         {
@@ -748,7 +748,7 @@ public abstract class LocalToCloudJobBase : JobBase
         return $"{remoteRoot}/{folderName}/{normalizedRelativePath}";
     }
 
-    private string ResolveFolderName(string localRootPath)
+    private static string ResolveFolderName(string localRootPath)
     {
         // Extract the local folder leaf name (e.g., "Downloads")
         string folderName = Path.GetFileName(localRootPath.TrimEnd(Path.DirectorySeparatorChar, Path.AltDirectorySeparatorChar));
@@ -763,9 +763,11 @@ public abstract class LocalToCloudJobBase : JobBase
         return folderName;
     }
 
-    private SemaphoreSlim GetDirectoryLock(string path)
+    private SemaphoreSlim GetStripedLock(string path)
     {
-        return _directoryLocks.GetOrAdd(path, _ => new SemaphoreSlim(1, 1));
+        int hash = path.GetHashCode(StringComparison.OrdinalIgnoreCase);
+        int index = Math.Abs(hash) % _stripedLocks.Length;
+        return _stripedLocks[index];
     }
 
     #endregion

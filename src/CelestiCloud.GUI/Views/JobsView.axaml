@@ -177,19 +177,19 @@
                                         Padding="16,8" CornerRadius="6" Cursor="Hand"> 
                                     <Panel>
         
-                                        <!-- 1. START STATE -->
+                                        <!-- Start State -->
                                         <StackPanel Orientation="Horizontal" Spacing="8" IsVisible="{Binding IsStartButtonVisible}">
                                             <TextBlock Text="▶" Foreground="#4CAF50"/>
                                             <TextBlock Text="Start Job" FontWeight="Bold"/>
                                         </StackPanel>
         
-                                        <!-- 2. STOP STATE -->
+                                        <!-- Stop State -->
                                         <StackPanel Orientation="Horizontal" Spacing="8" IsVisible="{Binding IsStopButtonVisible}">
                                             <TextBlock Text="⏹" Foreground="#FF5252"/>
                                             <TextBlock Text="Stop Job" FontWeight="Bold"/>
                                         </StackPanel>
 
-                                        <!-- 3. PROCESSING STATE (Prevents confusion while waiting for the engine) -->
+                                        <!-- Processing State (Prevents confusion while waiting for the engine) -->
                                         <StackPanel Orientation="Horizontal" Spacing="8" IsVisible="{Binding IsProcessingButtonVisible}">
                                             <TextBlock Text="⏳" Foreground="#FFC107"/>
                                             <TextBlock Text="Processing..." FontWeight="Bold" Foreground="{DynamicResource TextSecondaryBrush}"/>
@@ -230,7 +230,6 @@
                             <Separator Background="{DynamicResource DividerBrush}" Margin="0,10,0,0"/>
                         </StackPanel>
 
-                        <!-- Same Scrollable Form Content As Before... -->
                         <ScrollViewer Grid.Row="1" Margin="24,0,24,0" Padding="0,0,16,0">
                             <StackPanel Spacing="16" DataContext="{Binding EditingJob}">
                                 
@@ -251,7 +250,6 @@
                                 <StackPanel>
                                     <TextBlock Text="Target Account" FontWeight="SemiBold" Margin="0,0,0,4"/>
     
-                                    <!-- CHANGED: Replaced SelectedValue with SelectedItem -->
                                     <ComboBox ItemsSource="{Binding $parent[UserControl].((vm:JobsViewModel)DataContext).AvailableAccounts}"
                                               SelectedItem="{Binding $parent[UserControl].((vm:JobsViewModel)DataContext).EditingTargetAccount}" 
                                               HorizontalAlignment="Stretch">

@@ -18,8 +18,7 @@ public class GoogleDriveProvider : ICloudProvider
     private DriveService? _service;
 
     private readonly ConcurrentDictionary<string, string> _folderCache = new();
-    private readonly SemaphoreSlim _folderLock = new(1, 1);
-    private readonly ConcurrentDictionary<string, Task<string?>> _folderResolutionTasks = new(StringComparer.OrdinalIgnoreCase);
+    private readonly ConcurrentDictionary<string, Lazy<Task<string?>>> _folderResolutionTasks = new(StringComparer.OrdinalIgnoreCase);
 
     private const string FolderMimeType = "application/vnd.google-apps.folder";
     private static readonly string[] Scopes = 
@@ -313,127 +312,80 @@ public class GoogleDriveProvider : ICloudProvider
             string pathSnapshot = currentPath;
             string parentIdSnapshot = currentParentId;
 
-            if (!createIfMissing)
+            Lazy<Task<string?>> lazyTask = _folderResolutionTasks.GetOrAdd(taskKey, _ =>
             {
-                currentParentId = await _folderResolutionTasks.GetOrAdd(pathSnapshot, async (_) =>
-                {
-                    // Double-check string cache inside the task context
-                    if (_folderCache.TryGetValue(pathSnapshot, out string? id)) return id;
+                return new Lazy<Task<string?>>(() =>
+                    ResolveSegmentInternalAsync(pathSnapshot, segment, parentIdSnapshot, canUseCache, createIfMissing)
+                );
+            });
 
-                    var request = _service!.Files.List();
-                    string safeSegment = segment.Replace("'", "\\'");
-                    request.Q = $"name = '{safeSegment}' and '{parentIdSnapshot}' in parents and trashed = false";
-                    request.Fields = "files(id, mimeType)";
+            currentParentId = await lazyTask.Value;
 
-                    var result = await request.ExecuteAsync();
-                    var file = result.Files.FirstOrDefault();
-
-                    if (file != null)
-                    {
-                        // Only cache in string cache if it's explicitly a folder
-                        if (canUseCache || file.MimeType == FolderMimeType)
-                        {
-                            _folderCache[pathSnapshot] = file.Id;
-                        }
-                        return file.Id;
-                    }
-
-                    return null;
-                });
-
-                // If the segment didn't resolve, remove the failed task so it can be retried later
-                if (currentParentId == null)
-                {
-                    _folderResolutionTasks.TryRemove(currentPath, out _);
-                    return null;
-                }
+            try
+            {
+                currentParentId = await lazyTask.Value;
             }
-            else
+            finally
             {
-                // Lock used only when actively creating missing directories
-                await _folderLock.WaitAsync();
-                FileStream? crossProcessLock = null;
-                try
-                {
-                    crossProcessLock = await AcquireCrossProcessLockAsync();
+                _folderResolutionTasks.TryRemove(taskKey, out _);
+            }
 
-                    if (canUseCache && _folderCache.TryGetValue(currentPath, out cachedId))
-                    {
-                        currentParentId = cachedId;
-                        continue;
-                    }
-
-                    var request = _service!.Files.List();
-                    string safeSegment = segment.Replace("'", "\\'");
-                    request.Q = $"name = '{safeSegment}' and '{currentParentId}' in parents and trashed = false";
-                    request.Fields = "files(id, mimeType)";
-
-                    var result = await request.ExecuteAsync();
-                    var file = result.Files.FirstOrDefault();
-
-                    if (file != null)
-                    {
-                        currentParentId = file.Id;
-                        if (canUseCache || file.MimeType == FolderMimeType)
-                        {
-                            _folderCache[currentPath] = currentParentId;
-                        }
-                    }
-                    else
-                    {
-                        var folderMetadata = new DriveFile
-                        {
-                            Name = segment,
-                            MimeType = FolderMimeType,
-                            Parents = [currentParentId]
-                        };
-
-                        var createRequest = _service.Files.Create(folderMetadata);
-                        createRequest.Fields = "id";
-                        var newFolder = await createRequest.ExecuteAsync();
-
-                        currentParentId = newFolder.Id;
-                        _folderCache[currentPath] = currentParentId;
-                    }
-                }
-                finally
-                {
-                    if (crossProcessLock != null)
-                    {
-                        await crossProcessLock.DisposeAsync();
-                    }
-                    _folderLock.Release();
-                }
+            if (currentParentId == null)
+            {
+                return null;
             }
         }
 
         return currentParentId;
     }
 
-
-    private async Task<FileStream> AcquireCrossProcessLockAsync()
+    private async Task<string?> ResolveSegmentInternalAsync(
+    string path,
+    string segment,
+    string parentId,
+    bool canUseCache,
+    bool createIfMissing)
     {
-        Directory.CreateDirectory(_tokenDirectoryPath);
-        string lockPath = Path.Combine(_tokenDirectoryPath, "folder_resolve.lock");
+        // Double  check the cache inside task context
+        if (canUseCache && _folderCache.TryGetValue(path, out string? id)) return id;
 
-        int retries = 30; // Max wait of 30 seconds
-        while (retries > 0)
+        // Attempt to locate folder on Drive
+        var request = _service!.Files.List();
+        string safeSegment = segment.Replace("'", "\\'");
+        request.Q = $"name = '{safeSegment}' and '{parentId}' in parents and trashed = false";
+        request.Fields = "files(id, mimeType)";
+
+        var result = await request.ExecuteAsync();
+        var file = result.Files.FirstOrDefault();
+
+        if (file != null)
         {
-            try
+            if (canUseCache || file.MimeType == FolderMimeType)
             {
-                // FileMode.OpenOrCreate + FileAccess.ReadWrite + FileShare.None is 100% cross-platform.
-                // If another process is holding this handle, the OS will reject this call and throw IOException.
-                return new FileStream(lockPath, FileMode.OpenOrCreate, FileAccess.ReadWrite, FileShare.None);
+                _folderCache[path] = file.Id;
             }
-            catch (IOException)
-            {
-                // Wait 1 second before trying again
-                await Task.Delay(1000);
-                retries--;
-            }
+            return file.Id;
         }
 
-        throw new TimeoutException("Failed to acquire cross-process lock for folder resolution.");
+        // If folder is missing, and we are in write mode, create it exclusively
+        if (createIfMissing)
+        {
+            var folderMetadata = new DriveFile
+            {
+                Name = segment,
+                MimeType = FolderMimeType,
+                Parents = [parentId]
+            };
+
+            var createRequest = _service.Files.Create(folderMetadata);
+            createRequest.Fields = "id";
+            var newFolder = await createRequest.ExecuteAsync();
+
+            _folderCache[path] = newFolder.Id;
+            return newFolder.Id;
+        }
+
+        return null;
     }
 
     private void InvalidateCache(string remotePath)
