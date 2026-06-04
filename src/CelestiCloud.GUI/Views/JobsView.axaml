@@ -268,8 +268,7 @@
                                     </StackPanel>
                                     <StackPanel Grid.Column="1">
                                         <TextBlock Text="Max Concurrent" FontWeight="SemiBold" Margin="0,0,0,4"/>
-                                        <NumericUpDown Value="{Binding MaxConcurrentTransfers, TargetNullValue=1, FallbackValue=1}"
-                                                       ParsingNumberStyle="Integer"
+                                        <NumericUpDown Value="{Binding $parent[UserControl].((vm:JobsViewModel)DataContext).EditingMaxConcurrentTransfers}"
                                                        Minimum="1" Maximum="20"/>
                                     </StackPanel>
                                 </Grid>

@@ -72,6 +72,9 @@ public partial class JobsViewModel : ViewModelBase
     [ObservableProperty]
     private string _newIgnorePatternInput = string.Empty;
 
+    [ObservableProperty]
+    private decimal? _editingMaxConcurrentTransfers; // decimal? matches NumericUpDown perfectly
+
     // --- MODAL VISIBILITY ---
     [ObservableProperty]
     [NotifyPropertyChangedFor(nameof(IsDimmerVisible))]
@@ -194,6 +197,8 @@ public partial class JobsViewModel : ViewModelBase
         // Add defaults
         EditingIgnorePatterns.Add("*.tmp");
 
+        EditingMaxConcurrentTransfers = 4;
+
         IsEditModalOpen = true;
     }
 
@@ -222,6 +227,7 @@ public partial class JobsViewModel : ViewModelBase
 
         EditingLocalPaths = new ObservableCollection<string>(SelectedJobDetails.LocalPaths);
         EditingIgnorePatterns = new ObservableCollection<string>(SelectedJobDetails.IgnorePatterns);
+        EditingMaxConcurrentTransfers = SelectedJobDetails.MaxConcurrentTransfers;
 
         // Transition modals
         IsViewModalOpen = false;
@@ -282,6 +288,7 @@ public partial class JobsViewModel : ViewModelBase
         // Sync the temporary collections back to the model
         EditingJob.LocalPaths = [.. EditingLocalPaths];
         EditingJob.IgnorePatterns = [.. EditingIgnorePatterns];
+        EditingJob.MaxConcurrentTransfers = (int)(EditingMaxConcurrentTransfers ?? 4);
 
         var allOtherJobs = _configManager.LoadAllJobs().Where(j => j.Id != EditingJob.Id);
 
