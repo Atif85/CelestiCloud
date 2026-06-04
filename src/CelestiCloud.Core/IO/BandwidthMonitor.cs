@@ -6,7 +6,9 @@ namespace CelestiCloud.Core.IO;
 public static class BandwidthMonitor
 {
     private static long _totalBytesUploaded;
-    private static long _bytesInLastInterval;
+    private static readonly long[] _speedHistory = new long[5];
+    private static int _historyIndex;
+    private static long _bytesInCurrentInterval;
     private static double _currentSpeedBps;
     private static readonly Timer _speedTimer;
 
@@ -25,12 +27,28 @@ public static class BandwidthMonitor
     public static void RecordBytes(long bytes)
     {
         Interlocked.Add(ref _totalBytesUploaded, bytes);
-        Interlocked.Add(ref _bytesInLastInterval, bytes);
+        Interlocked.Add(ref _bytesInCurrentInterval, bytes);
     }
 
     private static void CalculateSpeed(object? state)
     {
-        long bytesThisSecond = Interlocked.Exchange(ref _bytesInLastInterval, 0);
-        Volatile.Write(ref _currentSpeedBps, bytesThisSecond); // Speed in Bytes/Sec
+        // Swap out the bytes recorded in the last 1 second
+        long bytesThisSecond = Interlocked.Exchange(ref _bytesInCurrentInterval, 0);
+
+        // Store it in our rolling history array
+        _speedHistory[_historyIndex] = bytesThisSecond;
+        _historyIndex = (_historyIndex + 1) % _speedHistory.Length;
+
+        // Calculate the moving average
+        long sum = 0;
+        for (int i = 0; i < _speedHistory.Length; i++)
+        {
+            sum += _speedHistory[i];
+        }
+
+        double movingAverageBps = (double)sum / _speedHistory.Length;
+
+        // Update the volatile speed variable safely
+        Volatile.Write(ref _currentSpeedBps, movingAverageBps);
     }
 }
