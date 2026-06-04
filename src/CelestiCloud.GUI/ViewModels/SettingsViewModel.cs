@@ -2,8 +2,10 @@
 using Avalonia.Styling;
 using CelestiCloud.Core.Config;
 using CelestiCloud.Core.Jobs;
+using CelestiCloud.Core.Logging;
 using CelestiCloud.Core.Models;
 using CelestiCloud.GUI.Helpers;
+using CelestiCloud.GUI.Logging;
 using CommunityToolkit.Mvvm.ComponentModel;
 using System.Collections.ObjectModel;
 
@@ -13,6 +15,7 @@ public partial class SettingsViewModel : ViewModelBase
 {
     private readonly ConfigManager _configManager;
     private readonly JobEngine _jobEngine;
+    private readonly ObservableUiLogger _uiLogger;
     private readonly AppSettings _currentSettings;
 
     public ObservableCollection<string> AvailableThemes { get; } = ["System", "Light", "Dark"];
@@ -29,10 +32,11 @@ public partial class SettingsViewModel : ViewModelBase
     [ObservableProperty]
     private decimal? _uploadLimitKbps;
 
-    public SettingsViewModel(ConfigManager configManager, JobEngine jobEngine)
+    public SettingsViewModel(ConfigManager configManager, JobEngine jobEngine, ObservableUiLogger uiLogger)
     {
         _configManager = configManager;
         _jobEngine = jobEngine;
+        _uiLogger = uiLogger;
         _currentSettings = _configManager.LoadSettings();
 
         _startOnStartup = _currentSettings.StartOnStartup;
@@ -51,6 +55,7 @@ public partial class SettingsViewModel : ViewModelBase
     {
         _currentSettings.Theme = value;
         _configManager.SaveSettings(_currentSettings);
+        _uiLogger.Log(LogLevel.Info, $"Theme changed to '{value}'.");
         ApplyTheme(value);
     }
 
@@ -59,6 +64,7 @@ public partial class SettingsViewModel : ViewModelBase
         int intValue = (int)(value ?? 0);
         _currentSettings.GlobalUploadLimitKbps = intValue;
         _configManager.SaveSettings(_currentSettings);
+        _uiLogger.Log(LogLevel.Info, $"Upload limit set to {intValue} kbps.");
 
         _jobEngine.UpdateUploadLimit(intValue);
     }
@@ -80,6 +86,7 @@ public partial class SettingsViewModel : ViewModelBase
     {
         _currentSettings.StartOnStartup = value;
         _configManager.SaveSettings(_currentSettings);
+        _uiLogger.Log(LogLevel.Info, value ? "Enabled start on startup." : "Disabled start on startup.");
 
         // Configures the launch-on-startup registries/files across platforms!
         StartupManager.SetStartup(value);
@@ -89,5 +96,6 @@ public partial class SettingsViewModel : ViewModelBase
     {
         _currentSettings.MinimizeToTrayOnClose = value;
         _configManager.SaveSettings(_currentSettings);
+        _uiLogger.Log(LogLevel.Info, value ? "Minimize to tray on close enabled." : "Minimize to tray on close disabled.");
     }
 }

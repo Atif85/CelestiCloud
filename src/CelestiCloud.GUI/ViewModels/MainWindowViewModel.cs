@@ -47,8 +47,8 @@ public partial class MainWindowViewModel : ViewModelBase
 
         DashboardVm = new DashboardViewModel(configManager, jobEngine, uiLogger);
         JobsVm = new JobsViewModel(configManager, jobEngine, uiLogger);
-        AccountsVm = new AccountsViewModel(configManager, providerFactory);
-        SettingsVm = new SettingsViewModel(configManager, jobEngine);
+        AccountsVm = new AccountsViewModel(configManager, providerFactory, uiLogger);
+        SettingsVm = new SettingsViewModel(configManager, jobEngine, uiLogger);
     }
 
     /// <summary>

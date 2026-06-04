@@ -22,6 +22,7 @@ public abstract class LocalToCloudJobBase : JobBase
     private readonly List<FileSystemWatcher> _watchers = [];
     private Channel<FileEvent>? _eventChannel;
 
+    private readonly SemaphoreSlim _networkCheckLock = new(1, 1);
     private readonly ConcurrentDictionary<string, CancellationTokenSource> _debounceTicks = [];
     private readonly ConcurrentDictionary<string, Dictionary<string, CloudFile>> _remoteDirectoryCache = new(StringComparer.OrdinalIgnoreCase);
 
@@ -55,7 +56,7 @@ public abstract class LocalToCloudJobBase : JobBase
     /// The core execution flow. Runs the initial reconciliation pass, starts the watchers,
     /// and processes new filesystem events continuously.
     /// </summary>
-    protected override async Task ExecuteAsync(CancellationToken cancellationToken)
+    protected override async Task ExecuteAsync(CancellationToken ct)
     {
         Logger.Log(LogLevel.Info, $"Starting job '{Config.Name}'...");
 
@@ -74,7 +75,7 @@ public abstract class LocalToCloudJobBase : JobBase
         var workerTasks = new List<Task>();
         for (int i = 0; i < Config.MaxConcurrentTransfers; i++)
         {
-            workerTasks.Add(ProcessEventChannelWorkerAsync(i, cancellationToken));
+            workerTasks.Add(ProcessEventChannelWorkerAsync(i, ct));
         }
 
         var periodicReconciliationTask = Task.Run(async () =>
@@ -83,29 +84,49 @@ public abstract class LocalToCloudJobBase : JobBase
             {
                 var interval = TimeSpan.FromMinutes(Config.ReconciliationIntervalMinutes > 0 ? Config.ReconciliationIntervalMinutes : 10);
 
-                while (!cancellationToken.IsCancellationRequested)
+                while (!ct.IsCancellationRequested)
                 {
                     Logger.Log(LogLevel.Debug, "Starting file reconciliation pass...");
                     _remoteDirectoryCache.Clear();
 
-                    try
-                    {
-                        await ReconcileAndUploadAsync(cancellationToken);
+                    bool passSuccessful = false;
 
-                        if (AllowDeletions)
+                    while (!passSuccessful)
+                    {
+                        ct.ThrowIfCancellationRequested();
+
+                        try
                         {
-                            await CleanupOrphanedRemoteFilesAsync(cancellationToken);
+                            await ReconcileAndUploadAsync(ct);
+
+                            if (AllowDeletions)
+                            {
+                                await CleanupOrphanedRemoteFilesAsync(ct);
+                            }
+
+                            passSuccessful = true;
+                        }
+                        catch (OperationCanceledException)
+                        {
+                            throw;
+                        }
+                        catch (Exception ex) when (IsNetworkException(ex))
+                        {
+                            Logger.Log(LogLevel.Warning, "Network connection lost during reconciliation pass. Pausing sync loop...");
+                            await WaitForConnectionAsync(ct);
+                        }
+                        catch (Exception ex)
+                        {
+                            Logger.Log(LogLevel.Error, $"Critical error during reconciliation pass: {ex.Message}");
+                            passSuccessful = true;
                         }
                     }
-                    finally
-                    {
-                        _remoteDirectoryCache.Clear();
-                        Logger.Log(LogLevel.Debug, "Memory optimized: Cleared remote directory metadata cache.");
-                    }
 
+                    _remoteDirectoryCache.Clear();
+                    Logger.Log(LogLevel.Debug, "Memory optimized: Cleared remote directory metadata cache.");
                     Logger.Log(LogLevel.Debug, $"Pass complete. Next full run scheduled in {interval.TotalMinutes} minutes.");
 
-                    await Task.Delay(interval, cancellationToken);
+                    await Task.Delay(interval, ct);
                 }
             }
             catch (OperationCanceledException)
@@ -114,14 +135,14 @@ public abstract class LocalToCloudJobBase : JobBase
             }
             catch (Exception ex)
             {
-                Logger.Log(LogLevel.Error, $"Reconciliation loop encountered an error: {ex.Message}");
+                Logger.Log(LogLevel.Error, $"Reconciliation loop encountered a fatal error: {ex.Message}");
             }
         });
 
         try
         {
             // Keep the job alive indefinitely until StopAsync or a cancellation is requested
-            await Task.Delay(Timeout.Infinite, cancellationToken);
+            await Task.Delay(Timeout.Infinite, ct);
         }
         catch (OperationCanceledException)
         {
@@ -255,31 +276,45 @@ public abstract class LocalToCloudJobBase : JobBase
         }
     }
 
-    private async Task ProcessScanChannelWorkerAsync(ChannelReader<ScanFileEvent> reader, CancellationToken cancellationToken)
+    private async Task ProcessScanChannelWorkerAsync(ChannelReader<ScanFileEvent> reader, CancellationToken ct)
     {
         try
         {
-            // ReadAllAsync reads continuously and exits cleanly once the channel is completed
-            await foreach (var fileEvent in reader.ReadAllAsync(cancellationToken))
+            await foreach (var fileEvent in reader.ReadAllAsync(ct))
             {
-                try
+                bool success = false;
+
+                while (!success)
                 {
-                    string remoteFilePath = GetRemotePath(fileEvent.LocalPath, fileEvent.LocalRootPath);
-                    await ReconcileFileAsync(fileEvent.LocalPath, remoteFilePath, cancellationToken);
+                    ct.ThrowIfCancellationRequested();
+
+                    try
+                    {
+                        string remoteFilePath = GetRemotePath(fileEvent.LocalPath, fileEvent.LocalRootPath);
+                        await ReconcileFileAsync(fileEvent.LocalPath, remoteFilePath, ct);
+
+                        success = true;
+                    }
+                    catch (OperationCanceledException)
+                    {
+                        throw;
+                    }
+                    catch (Exception ex) when (IsNetworkException(ex))
+                    {
+                        // Catch network drops, hold the thread, and retry this exact file once online
+                        Logger.Log(LogLevel.Warning, $"[Network Interruption] Failed to process '{Path.GetFileName(fileEvent.LocalPath)}'. Retrying once online...");
+                        await WaitForConnectionAsync(ct);
+                    }
+                    catch (Exception ex)
+                    {
+                        Logger.Log(LogLevel.Error, $"Error reconciling file '{fileEvent.LocalPath}': {ex.Message}");
+                        success = true;
+                    }
                 }
-                catch (OperationCanceledException)
-                {
-                    throw;
-                }
-                catch (Exception ex)
-                {
-                    Logger.Log(LogLevel.Error, $"Error reconciling file '{fileEvent.LocalPath}': {ex.Message}");
-                }
-                finally
-                {
-                    int currentProcessed = Interlocked.Increment(ref _filesProcessed);
-                    State.FilesProcessed = currentProcessed;
-                }
+
+                // Progress is only updated after successful processing
+                int currentProcessed = Interlocked.Increment(ref _filesProcessed);
+                State.FilesProcessed = currentProcessed;
             }
         }
         catch (OperationCanceledException)
@@ -364,6 +399,11 @@ public abstract class LocalToCloudJobBase : JobBase
             }
             catch (Exception ex)
             {
+                if (IsNetworkException(ex))
+                {
+                    throw;
+                }
+
                 Logger.Log(LogLevel.Error, $"Failed to list remote directory '{remoteFolderPath}': {ex.Message}");
             }
 
@@ -778,6 +818,79 @@ public abstract class LocalToCloudJobBase : JobBase
         return _stripedLocks[index];
     }
 
+    #endregion
+
+    #region Network Errors
+
+    private static bool IsNetworkException(Exception ex)
+    {
+        if (ex is HttpRequestException || ex is TimeoutException || ex is System.Net.Sockets.SocketException)
+            return true;
+
+        if (ex is TaskCanceledException tce && !tce.CancellationToken.IsCancellationRequested)
+        {
+            // HttpClient timeout
+            return true;
+        }
+
+        // Unwrap InnerExceptions recursively
+        if (ex.InnerException != null)
+        {
+            return IsNetworkException(ex.InnerException);
+        }
+
+        return false;
+    }
+
+    private static bool IsNetworkAvailable()
+    {
+        try
+        {
+            using var client = new HttpClient { Timeout = TimeSpan.FromSeconds(5) };
+            using var response = client.Send(new HttpRequestMessage(HttpMethod.Get, "https://www.google.com"));
+
+            return true;
+        }
+        catch
+        {
+            return false;
+        }
+    }
+
+    private async Task WaitForConnectionAsync(CancellationToken ct)
+    {
+        bool isPrimaryChecker = await _networkCheckLock.WaitAsync(0, ct);
+
+        if (!isPrimaryChecker)
+        {
+            // This is a secondary thread. It waits on the lock until the primary thread 
+            // releases it (which only happens after connection is restored)
+            await _networkCheckLock.WaitAsync(ct);
+            _networkCheckLock.Release();
+            return;
+        }
+
+        try
+        {
+            Logger.Log(LogLevel.Warning, "Network connection lost. Pausing active transfers...");
+
+            while (!ct.IsCancellationRequested)
+            {
+                if (IsNetworkAvailable())
+                {
+                    Logger.Log(LogLevel.Info, "Network connection restored. Resuming transfers...");
+                    return;
+                }
+
+                await Task.Delay(5000, ct);
+            }
+        }
+        finally
+        {
+            // Release the gate lock so all waiting threads can resume work concurrently [1.2.1]
+            _networkCheckLock.Release();
+        }
+    }
     #endregion
 
     #region Internal Structs

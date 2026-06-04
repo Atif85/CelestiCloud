@@ -1,7 +1,9 @@
 ﻿using Avalonia.Threading;
 using CelestiCloud.Core.Config;
+using CelestiCloud.Core.Logging;
 using CelestiCloud.Core.Models;
 using CelestiCloud.Core.Providers;
+using CelestiCloud.GUI.Logging;
 using CommunityToolkit.Mvvm.ComponentModel;
 using CommunityToolkit.Mvvm.Input;
 using System;
@@ -16,6 +18,7 @@ public partial class AccountsViewModel : ViewModelBase
 {
     private readonly ConfigManager _configManager;
     private readonly ProviderFactory _providerFactory;
+    private readonly ObservableUiLogger _uiLogger;
 
     [ObservableProperty]
     private ObservableCollection<AccountConfig> _accounts = [];
@@ -39,10 +42,11 @@ public partial class AccountsViewModel : ViewModelBase
     [ObservableProperty]
     private AccountConfig? _selectedAccountDetails;
 
-    public AccountsViewModel(ConfigManager configManager, ProviderFactory providerFactory)
+    public AccountsViewModel(ConfigManager configManager, ProviderFactory providerFactory, ObservableUiLogger uiLogger)
     {
         _configManager = configManager;
         _providerFactory = providerFactory;
+        _uiLogger = uiLogger;
 
         LoadAccountsAsync();
     }
@@ -119,12 +123,14 @@ public partial class AccountsViewModel : ViewModelBase
             // Success: Update state, save to disk, and refresh view list
             account.DisplayName = userEmail;
             _configManager.SaveAccount(account);
+            _uiLogger.Log(LogLevel.Info, $"Linked account '{account.DisplayName}' ({account.Provider}).");
 
             LoadAccountsAsync();
             IsAddAccountOpen = false;
         }
         catch (Exception ex)
         {
+            _uiLogger.Log(LogLevel.Error, $"Failed to link account for provider '{targetProvider}': {ex.Message}");
             System.Diagnostics.Debug.WriteLine($"Error adding account:[/] {ex.Message}");
         }
         finally
@@ -144,16 +150,17 @@ public partial class AccountsViewModel : ViewModelBase
         try
         {
             var provider = await _providerFactory.GetOrCreateProviderAsync(SelectedAccountDetails);
-            System.Diagnostics.Debug.WriteLine($"Got Provider Succesfully");
             await provider.RevokeAccessAsync();
 
             _configManager.DeleteAccount(SelectedAccountDetails.Id);
+            _uiLogger.Log(LogLevel.Info, $"Removed account '{SelectedAccountDetails.DisplayName}'.");
 
             LoadAccountsAsync();
             CloseDetails();
         }
         catch (Exception ex)
         {
+            _uiLogger.Log(LogLevel.Error, $"Failed to remove account '{SelectedAccountDetails.DisplayName}': {ex.Message}");
             System.Diagnostics.Debug.WriteLine($"Error removing account: {ex.Message}");
             return;
         }

@@ -1,6 +1,7 @@
 ﻿using Avalonia.Threading;
 using CelestiCloud.Core.Config;
 using CelestiCloud.Core.Jobs;
+using CelestiCloud.Core.Logging;
 using CelestiCloud.Core.Models;
 using CommunityToolkit.Mvvm.ComponentModel;
 using CommunityToolkit.Mvvm.Input;
@@ -20,6 +21,7 @@ public partial class JobsViewModel : ViewModelBase
 {
     private readonly ConfigManager _configManager;
     private readonly JobEngine _jobEngine;
+    private readonly ObservableUiLogger _uiLogger;
 
     private readonly DispatcherTimer _statusTimer;
 
@@ -85,6 +87,7 @@ public partial class JobsViewModel : ViewModelBase
     {
         _configManager = configManager;
         _jobEngine = jobEngine;
+        _uiLogger = uiLogger;
 
         _statusTimer = new DispatcherTimer { Interval = TimeSpan.FromSeconds(1) };
         _statusTimer.Tick += (s, e) =>
@@ -278,6 +281,15 @@ public partial class JobsViewModel : ViewModelBase
 
         _configManager.SaveJob(EditingJob);
 
+        if (IsCreatingNew)
+        {
+            _uiLogger.Log(LogLevel.Info, $"Created job '{EditingJob.Name}'.");
+        }
+        else
+        {
+            _uiLogger.Log(LogLevel.Info, $"Updated job '{EditingJob.Name}'.");
+        }
+
         LoadData();
         IsEditModalOpen = false;
         if (!IsCreatingNew) IsViewModalOpen = true;
@@ -292,6 +304,7 @@ public partial class JobsViewModel : ViewModelBase
         await _jobEngine.StopJobAsync(EditingJob.Id);
 
         _configManager.DeleteJob(EditingJob.Id);
+        _uiLogger.Log(LogLevel.Info, $"Deleted job '{EditingJob.Name}'.");
 
         LoadData();
         IsEditModalOpen = false;
