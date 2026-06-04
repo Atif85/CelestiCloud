@@ -148,16 +148,18 @@
                             <ItemsControl ItemsSource="{Binding LiveLogs}">
                                 <ItemsControl.ItemTemplate>
                                     <DataTemplate>
-                                        <StackPanel Orientation="Horizontal" Margin="0,2">
+                                        <Grid ColumnDefinitions="Auto, Auto, *" Margin="0,2">
                                     
                                             <!-- Timestamp (Gray) -->
-                                            <TextBlock Text="{Binding FormattedTime, StringFormat='[{0}] '}" 
+                                            <TextBlock Grid.Column="0"
+                                                       Text="{Binding FormattedTime, StringFormat='[{0}] '}" 
                                                        Foreground="#888888" 
                                                        FontFamily="Consolas, Monospace" 
                                                        FontSize="13"/>
                                     
                                             <!-- Log Level (Colored dynamically based on our C# ColorHex property) -->
-                                            <TextBlock Text="{Binding Level, StringFormat='[{0}] '}" 
+                                            <TextBlock Grid.Column="1" 
+                                                       Text="{Binding Level, StringFormat='[{0}] '}" 
                                                        Foreground="{Binding ColorHex}" 
                                                        FontWeight="Bold"
                                                        FontFamily="Consolas, Monospace" 
@@ -165,12 +167,13 @@
                                                        Width="70"/>
                                     
                                             <!-- Message Text (Light Gray) -->
-                                            <TextBlock Text="{Binding Text}" 
+                                            <TextBlock Grid.Column="3" 
+                                                       Text="{Binding Text}" 
                                                        Foreground="#CCCCCC" 
                                                        FontFamily="Consolas, Monospace" 
                                                        FontSize="13" 
                                                        TextWrapping="Wrap"/>
-                                        </StackPanel>
+                                        </Grid>
                                     </DataTemplate>
                                 </ItemsControl.ItemTemplate>
                             </ItemsControl>

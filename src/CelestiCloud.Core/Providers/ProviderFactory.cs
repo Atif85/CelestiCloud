@@ -20,7 +20,7 @@ public class ProviderFactory
         _configManager = configManager ?? throw new ArgumentNullException(nameof(configManager));
     }
 
-    public async Task<ICloudProvider> GetOrCreateProviderAsync(AccountConfig account, CancellationToken cancellationToken = default)
+    public async Task<ICloudProvider> GetOrCreateProviderAsync(AccountConfig account, CancellationToken ct = default)
     {
         // Check if we already have an active, initialized provider for this account
         if (_providerCache.TryGetValue(account.Id, out var existingProvider))
@@ -29,7 +29,7 @@ public class ProviderFactory
         }
 
         // Acquire lock to prevent duplicate initialization
-        await _factoryLock.WaitAsync(cancellationToken);
+        await _factoryLock.WaitAsync(ct);
         try
         {
             // Double-check cache inside the lock
@@ -46,7 +46,7 @@ public class ProviderFactory
                 string tokenDirectory = Path.Combine(_configManager.GetTokensDirectory(), account.Id);
 
                 var gDriveProvider = new GoogleDriveProvider(tokenDirectory);
-                await gDriveProvider.ConnectAsync(cancellationToken);
+                await gDriveProvider.ConnectAsync(ct);
 
                 newProvider = gDriveProvider;
             }

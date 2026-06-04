@@ -199,6 +199,58 @@
                         </Grid>
                     </StackPanel>
                 </Border>
+
+                <!-- CARD C: REMOVE ACCOUNT STATUS POPUP -->
+                <Border Width="460"
+                        HorizontalAlignment="Center"
+                        VerticalAlignment="Center"
+                        Background="{DynamicResource SidebarBackgroundBrush}"
+                        BorderBrush="{DynamicResource DividerBrush}"
+                        BorderThickness="1"
+                        CornerRadius="12"
+                        Padding="24"
+                        BoxShadow="0 8 32 0 #40000000"
+                        IsVisible="{Binding IsRemoveAccountOpen}">
+                    
+                    <StackPanel Spacing="16">
+                        <TextBlock Text="Disconnect Account" FontSize="18" FontWeight="Bold" Foreground="{DynamicResource TextPrimaryBrush}"/>
+                        
+                        <Separator Background="{DynamicResource DividerBrush}"/>
+
+                        <!-- Status text and spinner -->
+                        <StackPanel Spacing="16" Margin="0,10">
+                            <ProgressBar IsIndeterminate="True" Height="4" Foreground="{DynamicResource TextPrimaryBrush}" IsVisible="{Binding IsRemoving}"/>
+                            <TextBlock Text="{Binding RemoveStatusMessage}" TextWrapping="Wrap" Foreground="{DynamicResource TextSecondaryBrush}" LineHeight="20"/>
+                        </StackPanel>
+
+                        <Separator Background="{DynamicResource DividerBrush}"/>
+
+                        <!-- Footer Actions -->
+                        <Grid>
+                            <!-- Error State Buttons -->
+                            <Grid ColumnDefinitions="*, Auto" IsVisible="{Binding HasRemoveError}">
+                                <Button Grid.Column="0" 
+                                        Content="Remove Locally" 
+                                        Command="{Binding ForceRemoveAccountCommand}" 
+                                        Classes="danger" 
+                                        HorizontalAlignment="Left"
+                                        Padding="14,8" CornerRadius="6" Cursor="Hand"/>
+
+                                <Button Grid.Column="1" 
+                                        Content="Cancel" 
+                                        Command="{Binding CloseRemoveAccountCommand}" 
+                                        Padding="16,8" CornerRadius="6" Cursor="Hand"/>
+                            </Grid>
+                            
+                            <!-- Success State Button -->
+                            <Button Content="Close" 
+                                    Command="{Binding CloseRemoveAccountCommand}" 
+                                    IsVisible="{Binding IsRemoveSuccess}"
+                                    HorizontalAlignment="Right"
+                                    Padding="16,8" CornerRadius="6" Cursor="Hand"/>
+                        </Grid>
+                    </StackPanel>
+                </Border>
             </Grid>
         </Border>
     </Grid>

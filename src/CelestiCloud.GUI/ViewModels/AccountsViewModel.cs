@@ -10,6 +10,7 @@ using System;
 using System.Collections.ObjectModel;
 using System.Data.Common;
 using System.Security.Principal;
+using System.Threading;
 using System.Threading.Tasks;
 
 namespace CelestiCloud.GUI.ViewModels;
@@ -19,6 +20,8 @@ public partial class AccountsViewModel : ViewModelBase
     private readonly ConfigManager _configManager;
     private readonly ProviderFactory _providerFactory;
     private readonly ObservableUiLogger _uiLogger;
+
+    private CancellationTokenSource? _authCts;
 
     [ObservableProperty]
     private ObservableCollection<AccountConfig> _accounts = [];
@@ -35,8 +38,26 @@ public partial class AccountsViewModel : ViewModelBase
     [ObservableProperty]
     private bool _isAuthenticating;
 
+    [ObservableProperty]
+    [NotifyPropertyChangedFor(nameof(IsDimmerVisible))]
+    private bool _isRemoveAccountOpen;
+
+    [ObservableProperty]
+    [NotifyPropertyChangedFor(nameof(IsRemoveSuccess))]
+    private bool _isRemoving;
+
+    [ObservableProperty]
+    [NotifyPropertyChangedFor(nameof(IsRemoveSuccess))]
+    private bool _hasRemoveError;
+
+
+    [ObservableProperty]
+    private string _removeStatusMessage = string.Empty;
+
+    public bool IsRemoveSuccess => !IsRemoving && !HasRemoveError;
+
     // Controls whether the background dark-overlay is shown
-    public bool IsDimmerVisible => IsAddAccountOpen || IsDetailsOpen;
+    public bool IsDimmerVisible => IsAddAccountOpen || IsDetailsOpen || IsRemoveAccountOpen;
 
     // Holds the currently inspected account for the detail view
     [ObservableProperty]
@@ -87,6 +108,13 @@ public partial class AccountsViewModel : ViewModelBase
     [RelayCommand]
     private void CloseAddAccount()
     {
+        if (_authCts != null)
+        {
+            _authCts.Cancel();
+            _authCts.Dispose();
+            _authCts = null;
+        }
+
         IsAddAccountOpen = false;
         IsAuthenticating = false;
     }
@@ -102,6 +130,9 @@ public partial class AccountsViewModel : ViewModelBase
     private async Task LinkAccountAsync(string targetProvider)
     {
         IsAuthenticating = true;
+
+        _authCts = new CancellationTokenSource();
+
         try
         {
             if (targetProvider == "google")
@@ -117,8 +148,8 @@ public partial class AccountsViewModel : ViewModelBase
             };
 
             // This fires off standard browser consent sequence
-            var provider = await _providerFactory.GetOrCreateProviderAsync(account);
-            string userEmail = await provider.GetAuthenticatedUserEmailAsync();
+            var provider = await _providerFactory.GetOrCreateProviderAsync(account, _authCts.Token);
+            string userEmail = await provider.GetAuthenticatedUserEmailAsync(_authCts.Token);
 
             // Success: Update state, save to disk, and refresh view list
             account.DisplayName = userEmail;
@@ -128,6 +159,10 @@ public partial class AccountsViewModel : ViewModelBase
             LoadAccountsAsync();
             IsAddAccountOpen = false;
         }
+        catch (OperationCanceledException)
+        {
+            _uiLogger.Log(LogLevel.Info, "Account linking was canceled by the user.");
+        }
         catch (Exception ex)
         {
             _uiLogger.Log(LogLevel.Error, $"Failed to link account for provider '{targetProvider}': {ex.Message}");
@@ -136,16 +171,22 @@ public partial class AccountsViewModel : ViewModelBase
         finally
         {
             IsAuthenticating = false;
+
+            _authCts?.Dispose();
+            _authCts = null;
         }
     }
 
-    /// <summary>
-    /// Disconnects and deletes an account from disk
-    /// </summary>
     [RelayCommand]
-    private async Task RemoveAccount()
+    private async Task RemoveAccountAsync()
     {
         if (SelectedAccountDetails == null) return;
+
+        IsDetailsOpen = false;
+        IsRemoveAccountOpen = true;
+        IsRemoving = true;
+        HasRemoveError = false;
+        RemoveStatusMessage = "Contacting provider to securely revoke access...";
 
         try
         {
@@ -156,13 +197,35 @@ public partial class AccountsViewModel : ViewModelBase
             _uiLogger.Log(LogLevel.Info, $"Removed account '{SelectedAccountDetails.DisplayName}'.");
 
             LoadAccountsAsync();
-            CloseDetails();
+
+            RemoveStatusMessage = "Account disconnected successfully.";
+            IsRemoving = false;
         }
         catch (Exception ex)
         {
             _uiLogger.Log(LogLevel.Error, $"Failed to remove account '{SelectedAccountDetails.DisplayName}': {ex.Message}");
-            System.Diagnostics.Debug.WriteLine($"Error removing account: {ex.Message}");
-            return;
+            IsRemoving = false;
+            HasRemoveError = true;
+            RemoveStatusMessage = $"Could not contact the provider to revoke access. You might be offline.\n\nError: {ex.Message}\n\nWould you like to force-remove this account from the app locally?";
         }
+    }
+
+    [RelayCommand]
+    private void ForceRemoveAccount()
+    {
+        if (SelectedAccountDetails == null) return;
+
+        _configManager.DeleteAccount(SelectedAccountDetails.Id);
+        _uiLogger.Log(LogLevel.Info, $"Force-removed local account '{SelectedAccountDetails.DisplayName}'.");
+
+        LoadAccountsAsync();
+        CloseRemoveAccount();
+    }
+
+    [RelayCommand]
+    private void CloseRemoveAccount()
+    {
+        IsRemoveAccountOpen = false;
+        SelectedAccountDetails = null;
     }
 }

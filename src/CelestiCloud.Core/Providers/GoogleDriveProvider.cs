@@ -68,7 +68,7 @@ public class GoogleDriveProvider : ICloudProvider
             ApplicationName = APP_NAME
         });
 
-        _service.HttpClient.Timeout = TimeSpan.FromSeconds(30);
+        _service.HttpClient.Timeout = TimeSpan.FromSeconds(15);
     }
 
     public async Task RevokeAccessAsync(CancellationToken cancellationToken = default)
