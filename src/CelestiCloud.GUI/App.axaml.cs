@@ -9,11 +9,13 @@ using CelestiCloud.Core.Jobs;
 using CelestiCloud.Core.Logging;
 using CelestiCloud.Core.Providers;
 using CelestiCloud.GUI.Logging;
+using CelestiCloud.GUI.Services;
 using CelestiCloud.GUI.ViewModels;
 using CelestiCloud.GUI.Views;
 using System;
 using System.Diagnostics;
 using System.Linq;
+using System.Net.NetworkInformation;
 using System.Threading.RateLimiting;
 
 namespace CelestiCloud.GUI;
@@ -38,7 +40,7 @@ public partial class App : Application
                 .Where(p => p.Id != currentProcess.Id)
                 .ToList();
 
-            if (runningInstances.Any())
+            if (runningInstances.Count != 0)
             {
                 // 2. Conflict detected! Show the tiny decision window first
                 var conflictWindow = new InstanceConflictWindow();
@@ -100,11 +102,50 @@ public partial class App : Application
 
         _ = jobEngine.StartAutoStartJobsAsync();
 
-        _mainWindow = new MainWindow
+        _mainWindow = new MainWindow();
+
+        var notificationService = new AvaloniaNotificationService(_mainWindow);
+
+        jobEngine.NotificationRequested += (title, message, severity) =>
         {
-            DataContext = new MainWindowViewModel(configManager, providerFactory, jobEngine, uiLogger),
+            var level = severity.ToLower() switch
+            {
+                "success" => NotificationLevel.Success,
+                "warning" => NotificationLevel.Warning,
+                "error" => NotificationLevel.Error,
+                _ => NotificationLevel.Info
+            };
+            notificationService.Show(title, message, level);
         };
 
+        NetworkChange.NetworkAvailabilityChanged += (sender, e) =>
+        {
+            Dispatcher.UIThread.Post(() =>
+            {
+                if (e.IsAvailable)
+                {
+                    notificationService.Show(
+                        "Network Restored",
+                        "Connected to the internet. Resuming synchronization operations...",
+                        NotificationLevel.Success);
+                }
+                else
+                {
+                    notificationService.Show(
+                        "Network Lost",
+                        "Connection lost. Pausing sync operations...",
+                        NotificationLevel.Error);
+                }
+            });
+        };
+
+        _mainWindow.DataContext = new MainWindowViewModel(
+            configManager,
+            providerFactory,
+            jobEngine,
+            uiLogger,
+            notificationService);
+        
         CreateTrayIcon(_mainWindow, jobEngine);
 
         // Handle start minimized check (for startup folder launches)

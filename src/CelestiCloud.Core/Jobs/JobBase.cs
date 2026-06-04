@@ -8,6 +8,8 @@ public abstract class JobBase
     public bool IsRunning { get; private set; }
     public SyncState State { get; } = new();
 
+    public event Action<string, string, string>? NotificationRequested;
+
     protected readonly string AppDataPath;
 
     private readonly Lock _lock = new();
@@ -94,4 +96,9 @@ public abstract class JobBase
     /// The actual execution logic that must be overridden by concrete jobs.
     /// </summary>
     protected abstract Task ExecuteAsync(CancellationToken cancellationToken);
+
+    protected void RequestNotification(string title, string message, string severity)
+    {
+        NotificationRequested?.Invoke(title, message, severity);
+    }
 }

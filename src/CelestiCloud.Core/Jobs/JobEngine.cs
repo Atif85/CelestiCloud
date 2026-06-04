@@ -16,6 +16,8 @@ public class JobEngine
     private RateLimiter? _uploadLimiter;
     private readonly IJobLogger _logger;
 
+    public event Action<string, string, string>? NotificationRequested;
+
     // Tracks currently executing jobs in memory: JobId -> JobInstance
     private readonly ConcurrentDictionary<string, JobBase> _activeJobs = new();
 
@@ -68,6 +70,12 @@ public class JobEngine
             JobType.Sync => new SyncJob(config, provider, _configManager.GetAppDataPath(), _uploadLimiter, _safeChunkSize, _logger),
             JobType.Backup => new BackupJob(config, provider, _configManager.GetAppDataPath(), _uploadLimiter, _safeChunkSize, _logger),
             _ => throw new NotSupportedException($"Unsupported Job Type: {config.JobType}")
+        };
+
+        jobInstance.NotificationRequested += (title, message, severity) =>
+        {
+            // Bubble the notification up to the GUI
+            NotificationRequested?.Invoke(title, message, severity);
         };
 
         // Register and run the job asynchronously in the background

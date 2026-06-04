@@ -3,6 +3,7 @@ using CelestiCloud.Core.Config;
 using CelestiCloud.Core.Jobs;
 using CelestiCloud.Core.Providers;
 using CelestiCloud.GUI.Logging;
+using CelestiCloud.GUI.Services;
 using CommunityToolkit.Mvvm.ComponentModel;
 using CommunityToolkit.Mvvm.Input;
 
@@ -39,15 +40,16 @@ public partial class MainWindowViewModel : ViewModelBase
     public AccountsViewModel AccountsVm { get; }
     public SettingsViewModel SettingsVm { get; }
 
-    public MainWindowViewModel(ConfigManager configManager, ProviderFactory providerFactory, JobEngine jobEngine, ObservableUiLogger uiLogger)
+    public MainWindowViewModel(ConfigManager configManager, ProviderFactory providerFactory, JobEngine jobEngine, 
+                               ObservableUiLogger uiLogger, INotificationService notificationService)
     {
         _configManager = configManager;
         _providerFactory = providerFactory;
         _jobEngine = jobEngine;
 
         DashboardVm = new DashboardViewModel(configManager, jobEngine, uiLogger);
-        JobsVm = new JobsViewModel(configManager, jobEngine, uiLogger);
-        AccountsVm = new AccountsViewModel(configManager, providerFactory, uiLogger);
+        JobsVm = new JobsViewModel(configManager, jobEngine, uiLogger , notificationService);
+        AccountsVm = new AccountsViewModel(configManager, providerFactory, uiLogger, notificationService);
         SettingsVm = new SettingsViewModel(configManager, jobEngine, uiLogger);
     }
 

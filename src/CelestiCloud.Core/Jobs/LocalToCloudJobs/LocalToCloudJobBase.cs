@@ -8,7 +8,7 @@ using System.Collections.Concurrent;
 using System.Threading.Channels;
 using System.Threading.RateLimiting;
 
-namespace CelestiCloud.Core.Jobs;
+namespace CelestiCloud.Core.Jobs.LocalToCloudJobs;
 
 public abstract class LocalToCloudJobBase : JobBase
 {
@@ -201,7 +201,10 @@ public abstract class LocalToCloudJobBase : JobBase
 
                 if (!Directory.Exists(localDir))
                 {
-                    Logger.Log(LogLevel.Error, $"Local root directory is missing: '{localDir}'. Halting job to prevent accidental cloud deletions.");
+                    string messege = $"Local root directory is missing: '{localDir}'. Halting job to prevent accidental cloud deletions.";
+                    Logger.Log(LogLevel.Error, messege);
+
+                    RequestNotification("Missing Directory", messege, "error");
                     _ = StopAsync();
                     return;
                 }
@@ -751,6 +754,19 @@ public abstract class LocalToCloudJobBase : JobBase
                 {
                     Logger.Log(LogLevel.Debug, $"Upload of '{Path.GetFileName(localPath)}' was canceled by user.");
                     return;
+                }
+                catch (Exception ex) when (ex.ToString().Contains("storageQuotaExceeded", StringComparison.OrdinalIgnoreCase))
+                {
+                    Logger.Log(LogLevel.Error, "Google Drive storage quota has been reached.");
+
+                    RequestNotification(
+                        "Storage Full",
+                        "Your Google Drive storage is full. Please free up space to resume syncing.",
+                        "error"
+                    );
+
+                    _ = StopAsync(); // Safely halt the job
+
                 }
                 catch (IOException) when (i < maxRetries - 1)
                 {

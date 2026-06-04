@@ -4,6 +4,7 @@ using CelestiCloud.Core.Logging;
 using CelestiCloud.Core.Models;
 using CelestiCloud.Core.Providers;
 using CelestiCloud.GUI.Logging;
+using CelestiCloud.GUI.Services;
 using CommunityToolkit.Mvvm.ComponentModel;
 using CommunityToolkit.Mvvm.Input;
 using System;
@@ -12,6 +13,7 @@ using System.Data.Common;
 using System.Security.Principal;
 using System.Threading;
 using System.Threading.Tasks;
+using Tmds.DBus.Protocol;
 
 namespace CelestiCloud.GUI.ViewModels;
 
@@ -20,6 +22,7 @@ public partial class AccountsViewModel : ViewModelBase
     private readonly ConfigManager _configManager;
     private readonly ProviderFactory _providerFactory;
     private readonly ObservableUiLogger _uiLogger;
+    private readonly INotificationService _notificationService;
 
     private CancellationTokenSource? _authCts;
 
@@ -63,11 +66,12 @@ public partial class AccountsViewModel : ViewModelBase
     [ObservableProperty]
     private AccountConfig? _selectedAccountDetails;
 
-    public AccountsViewModel(ConfigManager configManager, ProviderFactory providerFactory, ObservableUiLogger uiLogger)
+    public AccountsViewModel(ConfigManager configManager, ProviderFactory providerFactory, ObservableUiLogger uiLogger, INotificationService notiService)
     {
         _configManager = configManager;
         _providerFactory = providerFactory;
         _uiLogger = uiLogger;
+        _notificationService = notiService;
 
         LoadAccountsAsync();
     }
@@ -154,7 +158,11 @@ public partial class AccountsViewModel : ViewModelBase
             // Success: Update state, save to disk, and refresh view list
             account.DisplayName = userEmail;
             _configManager.SaveAccount(account);
-            _uiLogger.Log(LogLevel.Info, $"Linked account '{account.DisplayName}' ({account.Provider}).");
+
+            string messege = $"Linked account '{account.DisplayName}' ({account.Provider}).";
+            _uiLogger.Log(LogLevel.Info, messege);
+
+            _notificationService.Show("OAuth Success", messege, NotificationLevel.Warning);
 
             LoadAccountsAsync();
             IsAddAccountOpen = false;

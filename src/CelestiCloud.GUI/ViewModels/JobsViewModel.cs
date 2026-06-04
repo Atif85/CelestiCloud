@@ -14,6 +14,8 @@ using Avalonia.Controls;
 using Avalonia.Controls.ApplicationLifetimes;
 using Avalonia.Platform.Storage;
 using CelestiCloud.GUI.Logging;
+using CelestiCloud.GUI.Services;
+using System.IO;
 
 namespace CelestiCloud.GUI.ViewModels;
 
@@ -22,6 +24,7 @@ public partial class JobsViewModel : ViewModelBase
     private readonly ConfigManager _configManager;
     private readonly JobEngine _jobEngine;
     private readonly ObservableUiLogger _uiLogger;
+    private readonly INotificationService _notificationService;
 
     private readonly DispatcherTimer _statusTimer;
 
@@ -83,11 +86,12 @@ public partial class JobsViewModel : ViewModelBase
 
     public bool IsDimmerVisible => IsViewModalOpen || IsEditModalOpen;
 
-    public JobsViewModel(ConfigManager configManager, JobEngine jobEngine, ObservableUiLogger uiLogger)
+    public JobsViewModel(ConfigManager configManager, JobEngine jobEngine, ObservableUiLogger uiLogger, INotificationService notiService)
     {
         _configManager = configManager;
         _jobEngine = jobEngine;
         _uiLogger = uiLogger;
+        _notificationService = notiService;
 
         _statusTimer = new DispatcherTimer { Interval = TimeSpan.FromSeconds(1) };
         _statusTimer.Tick += (s, e) =>
@@ -279,7 +283,50 @@ public partial class JobsViewModel : ViewModelBase
         EditingJob.LocalPaths = [.. EditingLocalPaths];
         EditingJob.IgnorePatterns = [.. EditingIgnorePatterns];
 
+        var allOtherJobs = _configManager.LoadAllJobs().Where(j => j.Id != EditingJob.Id);
+
+        foreach (var path in EditingLocalPaths)
+        {
+            var conflictingJob = allOtherJobs.FirstOrDefault(j => j.LocalPaths.Any(p => p.Equals(path, StringComparison.OrdinalIgnoreCase)));
+            if (conflictingJob != null)
+            {
+                _notificationService.Show(
+                    "Directory Conflict",
+                    $"'{Path.GetFileName(path)}' is already being watched by the job '{conflictingJob.Name}'. Running both concurrently may cause transfer conflicts.",
+                    NotificationLevel.Warning
+                );
+            }
+        }
+
         _configManager.SaveJob(EditingJob);
+
+        if (EditingJob.LocalPaths.Count == 0)
+        {
+            string messege = $"Job '{EditingJob.Name}' was saved but has no local paths. No directories will be watched.";
+            _notificationService.Show(
+                title: "Empty Folder Warning",
+                message: messege,
+                level: NotificationLevel.Warning
+            );
+
+            _uiLogger.Log(LogLevel.Warning, messege);
+        }
+
+        bool ignoresEverything = EditingJob.IgnorePatterns.Contains("*") &&
+                             !EditingJob.IgnorePatterns.Any(static p => p.StartsWith('!'));
+
+        if (EditingJob.IgnorePatterns.Contains("*"))
+        {
+            string messege = $"Job '{EditingJob.Name}' is configured to ignore everything (*) with no negation rules (!). No files will be uploaded.";
+            _notificationService.Show(
+                title: "Ignore Policy Notice",
+                message: messege,
+                level: NotificationLevel.Warning,
+                duration: TimeSpan.FromSeconds(5)
+            );
+
+            _uiLogger.Log(LogLevel.Warning, messege);
+        }
 
         if (IsCreatingNew)
         {
