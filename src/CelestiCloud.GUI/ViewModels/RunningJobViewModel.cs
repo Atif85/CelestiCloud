@@ -51,7 +51,20 @@ public partial class RunningJobViewModel : ViewModelBase
             var existing = ActiveTransfers.FirstOrDefault(t => t.FileName == transfer.Key);
             if (existing == null)
             {
-                ActiveTransfers.Add(new TransferProgressViewModel(transfer.Key, transfer.Value));
+                long sizeOnDisk = 0;
+                try
+                {
+                    if (System.IO.File.Exists(transfer.Key))
+                    {
+                        sizeOnDisk = new System.IO.FileInfo(transfer.Key).Length;
+                    }
+                }
+                catch
+                {
+                    // Fallback to 0 if the file is strictly locked by the OS
+                }
+
+                ActiveTransfers.Add(new TransferProgressViewModel(transfer.Key, sizeOnDisk, transfer.Value));
             }
             else
             {

@@ -2,6 +2,7 @@
 using CelestiCloud.Core.Config;
 using CelestiCloud.Core.IO;
 using CelestiCloud.Core.Jobs;
+using CelestiCloud.GUI.Helpers;
 using CelestiCloud.GUI.Logging;
 using CommunityToolkit.Mvvm.ComponentModel;
 using CommunityToolkit.Mvvm.Input;
@@ -81,8 +82,8 @@ public partial class DashboardViewModel : ViewModelBase
 
     private void RefreshDashboard(object? sender, EventArgs e)
     {
-        CurrentSpeedText = FormatBytes(BandwidthMonitor.CurrentSpeedBps) + "/s";
-        TotalUploadedText = FormatBytes(BandwidthMonitor.TotalBytesUploaded);
+        CurrentSpeedText = ByteFormatter.Format(BandwidthMonitor.CurrentSpeedBps) + "/s";
+        TotalUploadedText = ByteFormatter.Format(BandwidthMonitor.TotalBytesUploaded);
 
         // Update progress metrics on all active card view models!
         var currentActive = _jobEngine.GetActiveJobs().ToList();
@@ -130,17 +131,5 @@ public partial class DashboardViewModel : ViewModelBase
                 Console.WriteLine(ex.Message);
             }
         }
-    }
-
-    private string FormatBytes(double bytes)
-    {
-        string[] suffixes = { "B", "KB", "MB", "GB", "TB" };
-        int i = 0;
-        while (bytes >= 1024 && i < suffixes.Length - 1)
-        {
-            bytes /= 1024;
-            i++;
-        }
-        return $"{bytes:F1} {suffixes[i]}";
     }
 }
