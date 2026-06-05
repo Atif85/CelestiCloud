@@ -60,17 +60,17 @@
                 <!-- Upload Limit -->
                 <Grid ColumnDefinitions="350, *">
                     <StackPanel Grid.Column="0">
-                        <TextBlock Text="Max Upload Speed (KB/s)" FontWeight="Medium" Foreground="{DynamicResource TextPrimaryBrush}"/>
-                        <TextBlock Text="Set to 0 for unlimited speed." FontSize="12" Foreground="{DynamicResource TextSecondaryBrush}" Margin="0,4,0,0"/>
+                        <TextBlock Text="Max Upload Speed" FontWeight="Medium" Foreground="{DynamicResource TextPrimaryBrush}"/>
+                        <TextBlock Text="Type e.g. '1.5mb', '500kb', '1.2' or '500'." FontSize="12" Foreground="{DynamicResource TextSecondaryBrush}" Margin="0,4,0,0"/>
                     </StackPanel>
 
-                    <NumericUpDown Grid.Column="1" 
-                                   Width="200"
-                                   Minimum="0" 
-                                   Maximum="999999"
-                                   Value="{Binding UploadLimitKbps}" 
-                                   FormatString="0 KB/s"
-                                   HorizontalAlignment="Left"/>
+                    <!-- A Textbox replaces the NumericUpDown control -->
+                    <TextBox Grid.Column="1" 
+                             Width="200"
+                             Text="{Binding UploadLimitInput, UpdateSourceTrigger=LostFocus}" 
+                             PlaceholderText="e.g. 1.2mb or 500kb"
+                             HorizontalAlignment="Left"
+                             LosingFocus="TextBox_LostFocus"/>
                 </Grid>
             </StackPanel>
 

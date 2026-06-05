@@ -30,7 +30,9 @@ public partial class SettingsViewModel : ViewModelBase
     private string _selectedTheme;
 
     [ObservableProperty]
-    private decimal? _uploadLimitKbps;
+    private string _uploadLimitInput = string.Empty;
+
+    private int _uploadLimitKbps;
 
     public SettingsViewModel(ConfigManager configManager, JobEngine jobEngine, ObservableUiLogger uiLogger)
     {
@@ -44,7 +46,9 @@ public partial class SettingsViewModel : ViewModelBase
 
         // Initialize UI properties with saved values (bypassing the On...Changed triggers temporarily)
         _selectedTheme = _currentSettings.Theme;
+
         _uploadLimitKbps = _currentSettings.GlobalUploadLimitKbps;
+        _uploadLimitInput = ByteFormatter.FormatKbps(_uploadLimitKbps);
 
         // Apply the loaded theme immediately on startup
         ApplyTheme(_selectedTheme);
@@ -59,14 +63,24 @@ public partial class SettingsViewModel : ViewModelBase
         ApplyTheme(value);
     }
 
-    partial void OnUploadLimitKbpsChanged(decimal? value)
+    partial void OnUploadLimitInputChanged(string value)
     {
-        int intValue = (int)(value ?? 0);
-        _currentSettings.GlobalUploadLimitKbps = intValue;
-        _configManager.SaveSettings(_currentSettings);
-        _uiLogger.Log(LogLevel.Info, $"Upload limit set to {intValue} kbps.");
+        int newLimitKbps = ByteFormatter.ParseToKbps(value);
 
-        _jobEngine.UpdateUploadLimit(intValue);
+        if (newLimitKbps != _uploadLimitKbps)
+        {
+            _uploadLimitKbps = newLimitKbps;
+            _currentSettings.GlobalUploadLimitKbps = newLimitKbps;
+            _configManager.SaveSettings(_currentSettings);
+
+            _uiLogger.Log(LogLevel.Info, $"Upload limit updated to: {ByteFormatter.FormatKbps(newLimitKbps)}");
+            _jobEngine.UpdateUploadLimit(newLimitKbps);
+        }
+    }
+
+    public void FormatInputOnLostFocus()
+    {
+        UploadLimitInput = ByteFormatter.FormatKbps(_uploadLimitKbps);
     }
 
     private void ApplyTheme(string themeStr)

@@ -155,7 +155,6 @@ public class JobEngine
         if (uploadLimitKbps > 0)
         {
             _uploadLimiter = BandwidthLimiterFactory.CreateLimiter(uploadLimitKbps * 1024);
-            _logger.Log(LogLevel.Info, $"Upload limit changed to {uploadLimitKbps} kbps");
         }
         else
         {
