@@ -95,6 +95,8 @@ public abstract class LocalToCloudJobBase : JobBase
                     {
                         ct.ThrowIfCancellationRequested();
 
+                        var stopwatch = System.Diagnostics.Stopwatch.StartNew();
+
                         try
                         {
                             await ReconcileAndUploadAsync(ct);
@@ -105,6 +107,12 @@ public abstract class LocalToCloudJobBase : JobBase
                             }
 
                             passSuccessful = true;
+
+                            stopwatch.Stop();
+
+                            // Output a highly visible Warning log with the exact timing
+                            Logger.Log(LogLevel.Info,
+                                $"[BENCHMARK] Full reconciliation pass completed successfully in {stopwatch.Elapsed.TotalSeconds:F2} seconds ({stopwatch.ElapsedMilliseconds} ms).");
                         }
                         catch (OperationCanceledException)
                         {
@@ -124,7 +132,7 @@ public abstract class LocalToCloudJobBase : JobBase
 
                     _remoteDirectoryCache.Clear();
                     Logger.Log(LogLevel.Debug, "Memory optimized: Cleared remote directory metadata cache.");
-                    Logger.Log(LogLevel.Debug, $"Pass complete. Next full run scheduled in {interval.TotalMinutes} minutes.");
+                    Logger.Log(LogLevel.Info, $"Pass complete. Next full run scheduled in {interval.TotalMinutes} minutes.");
 
                     await Task.Delay(interval, ct);
                 }

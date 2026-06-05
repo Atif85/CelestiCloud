@@ -9,7 +9,7 @@ public class FileLogger : IJobLogger
     private readonly string _logFilePath;
     private readonly Lock _lock = new();
 
-    private const long MaxLogSizeInBytes = 5 * 1024 * 1024; // 5 MB per file
+    private const long MaxLogSizeInBytes = 2 * 1024 * 1024; // 2 MB per file
     private const int MaxArchiveFiles = 3;                  // Keep up to 3 older backup files
 
     public LogLevel MinimumLevel { get; set; } = LogLevel.Debug;
