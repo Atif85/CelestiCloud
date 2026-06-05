@@ -12,12 +12,12 @@ public interface ICloudProvider
 
     Task<string> GetAuthenticatedUserEmailAsync(CancellationToken cancellationToken = default);
 
-    Task UploadFileAsync(Stream sourceStream, string remotePath, 
+    Task<string> UploadFileAsync(Stream sourceStream, string remotePath, 
                         string? existingFileId = null, bool assumeNew = false, 
                         IProgress<double>? progress = null,
                         CancellationToken cancellationToken = default);
 
-    Task RenameRemoteFileAsync(string oldRemotePath, string newRemotePath);
+    Task<string> RenameRemoteFileAsync(string oldRemotePath, string newRemotePath);
 
     Task DownloadFileAsync(string remotePath, Stream destinationStream, IProgress<double>? progress = null, CancellationToken cancellationToken = default);
 

@@ -419,10 +419,56 @@ public abstract class LocalToCloudJobBase : JobBase
         }
     }
 
-    private void InvalidateRemoteDirectoryCache(string remotePath)
+    private void UpdateDirectoryCacheWithUploadedFile(string remotePath, string localPath, string fileId)
     {
         string parentRemoteFolder = Path.GetDirectoryName(remotePath)?.Replace('\\', '/') ?? "/";
-        _remoteDirectoryCache.TryRemove(parentRemoteFolder, out _);
+        string fileName = Path.GetFileName(remotePath);
+
+        if (_remoteDirectoryCache.TryGetValue(parentRemoteFolder, out var cachedDir))
+        {
+            var localInfo = new FileInfo(localPath);
+
+            // Lock specifically for this folder to safely mutate the dictionary
+            var directoryLock = GetStripedLock(parentRemoteFolder);
+            directoryLock.Wait();
+            try
+            {
+                // Inject the new file properties directly into the hot cache [1.2.1]
+                cachedDir[fileName] = new CloudFile
+                {
+                    Id = fileId,
+                    Name = fileName,
+                    Size = localInfo.Length,
+                    ModifiedDate = localInfo.LastWriteTimeUtc,
+                    IsFolder = false
+                };
+            }
+            finally
+            {
+                directoryLock.Release();
+            }
+        }
+    }
+
+    // Support write-through for deletions
+    private void RemoveFromDirectoryCache(string remotePath)
+    {
+        string parentRemoteFolder = Path.GetDirectoryName(remotePath)?.Replace('\\', '/') ?? "/";
+        string fileName = Path.GetFileName(remotePath);
+
+        if (_remoteDirectoryCache.TryGetValue(parentRemoteFolder, out var cachedDir))
+        {
+            var directoryLock = GetStripedLock(parentRemoteFolder);
+            directoryLock.Wait();
+            try
+            {
+                cachedDir.Remove(fileName);
+            }
+            finally
+            {
+                directoryLock.Release();
+            }
+        }
     }
 
     private async Task CleanupOrphanedRemoteFilesAsync(CancellationToken cancellationToken)
@@ -473,13 +519,13 @@ public abstract class LocalToCloudJobBase : JobBase
                 {
                     Logger.Log(LogLevel.Info, $"[Cleanup] Removing orphaned remote file: {item.Name}");
                     await Provider.DeleteRemoteFileAsync(itemRemotePath, moveToTrash: true);
-                    InvalidateRemoteDirectoryCache(itemRemotePath);
+                    RemoveFromDirectoryCache(itemRemotePath);
                 }
                 else if (_ignoreFilter.ShouldIgnore(originalLocalRoot, expectedLocalPath))
                 {
                     Logger.Log(LogLevel.Info, $"[Cleanup] Removing newly ignored remote file: {item.Name}");
                     await Provider.DeleteRemoteFileAsync(itemRemotePath, moveToTrash: true);
-                    InvalidateRemoteDirectoryCache(itemRemotePath);
+                    RemoveFromDirectoryCache(itemRemotePath);
                 }
             }
         }
@@ -652,9 +698,9 @@ public abstract class LocalToCloudJobBase : JobBase
                             if (oldExistsOnCloud)
                             {
                                 Logger.Log(LogLevel.Info, $"[Rename] {Path.GetFileName(fileEvent.OldLocalPath)} -> {Path.GetFileName(fileEvent.NewLocalPath)}");
-                                await Provider.RenameRemoteFileAsync(oldRemotePath, remotePath);
-                                InvalidateRemoteDirectoryCache(oldRemotePath);
-                                InvalidateRemoteDirectoryCache(remotePath);
+                                string fileId = await Provider.RenameRemoteFileAsync(oldRemotePath, remotePath);
+                                RemoveFromDirectoryCache(oldRemotePath);
+                                UpdateDirectoryCacheWithUploadedFile(remotePath, fileEvent.NewLocalPath, fileId);
                             }
                             else
                             {
@@ -681,7 +727,7 @@ public abstract class LocalToCloudJobBase : JobBase
                         {
                             Logger.Log(LogLevel.Info, $"[Delete] Remote item: {Path.GetFileName(remotePath)}");
                             await Provider.DeleteRemoteFileAsync(remotePath, moveToTrash: true);
-                            InvalidateRemoteDirectoryCache(remotePath);
+                            RemoveFromDirectoryCache(remotePath);
                         }
                     }
                 }
@@ -751,8 +797,8 @@ public abstract class LocalToCloudJobBase : JobBase
 
                     await using var throttledStream = new ThrottledStream(rawFileStream, Limiter, _safeChunkSize);
 
-                    await Provider.UploadFileAsync(throttledStream, remotePath, existingFileId, assumeNew, progressReporter, ct);
-                    InvalidateRemoteDirectoryCache(remotePath);
+                    string fileId = await Provider.UploadFileAsync(throttledStream, remotePath, existingFileId, assumeNew, progressReporter, ct);
+                    UpdateDirectoryCacheWithUploadedFile(remotePath, localPath, fileId);
                     return;
                 }
                 catch (OperationCanceledException)

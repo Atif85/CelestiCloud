@@ -5,7 +5,10 @@ using Google.Apis.Services;
 using Google.Apis.Upload;
 using Google.Apis.Util.Store;
 using System.Collections.Concurrent;
+using System.Net.Http.Headers;
 using System.Reflection;
+using System.Text;
+using System.Text.Json;
 using DriveFile = Google.Apis.Drive.v3.Data.File;
 
 namespace CelestiCloud.Core.Providers;
@@ -29,6 +32,7 @@ public class GoogleDriveProvider : ICloudProvider
     private const int SmallFileThreshold = 4 * 1024 * 1024;   // 4 MB
     private const int SmallChunkSize = ResumableUpload.MinimumChunkSize;      // 256 KB
     private const int LargeChunkSize = ResumableUpload.MinimumChunkSize * 16; // 4 MB
+    private const long MultipartThreshold = 5 * 1024 * 1024;
 
     public GoogleDriveProvider(string tokenDirectoryPath)
     {
@@ -92,7 +96,7 @@ public class GoogleDriveProvider : ICloudProvider
         return about.User?.EmailAddress ?? "unknown-email";
     }
 
-    public async Task UploadFileAsync(
+    public async Task<string> UploadFileAsync(
         Stream sourceStream,
         string remotePath,
         string? existingFileId = null, 
@@ -117,12 +121,27 @@ public class GoogleDriveProvider : ICloudProvider
 
         bool remoteFileExists = fileId != null;
 
-        var fileMetadata = new DriveFile { Name = fileName };
         string mimeType = GetMimeType(remotePath);
 
-        int chunkSize = sourceStream.CanSeek && sourceStream.Length < SmallFileThreshold
-             ? SmallChunkSize
-             : LargeChunkSize;
+        long fileLength = sourceStream.CanSeek ? sourceStream.Length : 0;
+
+        //// --- FAST PATH: MULTIPART UPLOAD
+        //if (sourceStream.CanSeek && fileLength < SmallFileThreshold)
+        //{
+        //    return await UploadMultipartAsync(
+        //        sourceStream,
+        //        fileName,
+        //        parentPath,
+        //        fileId,
+        //        remoteFileExists,
+        //        mimeType,
+        //        progress,
+        //        cancellationToken);
+        //}
+
+        // --- SLOW PATH: RESUMABLE UPLOAD
+        var fileMetadata = new DriveFile { Name = fileName };
+        int chunkSize = fileLength < SmallFileThreshold ? SmallChunkSize : LargeChunkSize;
 
         ResumableUpload<DriveFile, DriveFile> uploadRequest;
 
@@ -140,12 +159,11 @@ public class GoogleDriveProvider : ICloudProvider
             uploadRequest = _service!.Files.Create(fileMetadata, sourceStream, mimeType);
         }
 
-        uploadRequest.ChunkSize = ResumableUpload.MinimumChunkSize * 2;
+        uploadRequest.ChunkSize = chunkSize;
 
         // Attach progress reporter if provided
         if (progress != null)
         {
-            long fileLength = sourceStream.CanSeek ? sourceStream.Length : 0;
             uploadRequest.ProgressChanged += uploadProgress =>
             {
                 if (uploadProgress.Status == UploadStatus.Uploading)
@@ -168,10 +186,92 @@ public class GoogleDriveProvider : ICloudProvider
             throw new Exception($"Upload failed: {response.Exception?.Message}", response.Exception);
         }
 
+        string uploadedId = uploadRequest.ResponseBody?.Id
+            ?? fileId
+            ?? throw new Exception("Failed to retrieve file ID from Google Drive.");
+
         progress?.Report(1.0); // 100% complete
+
+        return uploadedId;
     }
 
-    public async Task RenameRemoteFileAsync(string oldRemotePath, string newRemotePath)
+    private async Task<string> UploadMultipartAsync(
+    Stream sourceStream,
+    string fileName,
+    string parentPath,
+    string? fileId,
+    bool remoteFileExists,
+    string mimeType,
+    IProgress<double>? progress,
+    CancellationToken cancellationToken)
+    {
+        // Resolve access token
+        if (_service!.HttpClientInitializer is not ICredential credential) throw new InvalidOperationException("OAuth Credentials not initialized.");
+
+        string accessToken = await credential.GetAccessTokenForRequestAsync(cancellationToken: cancellationToken);
+
+        // Resolve parent folder if creating a new file
+        string parentFolderId = "";
+        if (!remoteFileExists)
+        {
+            parentFolderId = await ResolvePathToIdAsync(parentPath, createIfMissing: true)
+                             ?? throw new Exception("Failed to resolve or create remote parent folder.");
+        }
+
+        // Construct Google Multipart related payload
+        string boundary = Guid.NewGuid().ToString();
+        using var multipartContent = new MultipartContent("related", boundary);
+
+        // Part A: Metadata (JSON)
+        string metadataJson = remoteFileExists
+            ? JsonSerializer.Serialize(new { name = fileName })
+            : JsonSerializer.Serialize(new { name = fileName, parents = new[] { parentFolderId } });
+
+        var metadataContent = new StringContent(metadataJson, Encoding.UTF8, "application/json");
+        multipartContent.Add(metadataContent);
+
+        // Part B: Media bytes
+        var mediaContent = new StreamContent(sourceStream);
+        mediaContent.Headers.ContentType = new MediaTypeHeaderValue(mimeType);
+        multipartContent.Add(mediaContent);
+
+        // Send request using HttpClient
+        using var client = new HttpClient();
+        client.DefaultRequestHeaders.Authorization = new AuthenticationHeaderValue("Bearer", accessToken);
+
+        // Drive v3 uses PATCH for updating file media, POST for creating
+        string url = remoteFileExists
+            ? $"https://www.googleapis.com/upload/drive/v3/files/{fileId}?uploadType=multipart"
+            : "https://www.googleapis.com/upload/drive/v3/files?uploadType=multipart";
+
+        HttpResponseMessage response;
+        if (remoteFileExists)
+        {
+            response = await client.PatchAsync(url, multipartContent, cancellationToken);
+        }
+        else
+        {
+            response = await client.PostAsync(url, multipartContent, cancellationToken);
+        }
+
+        if (!response.IsSuccessStatusCode)
+        {
+            string errorContent = await response.Content.ReadAsStringAsync(cancellationToken);
+            throw new Exception($"Multipart upload failed with status code {response.StatusCode}: {errorContent}");
+        }
+
+        string responseContent = await response.Content.ReadAsStringAsync(cancellationToken);
+        using var doc = JsonDocument.Parse(responseContent);
+        string uploadedId = doc.RootElement.GetProperty("id").GetString()
+            ?? throw new Exception("Google Drive response did not contain a file ID.");
+
+        // Immediately report complete (Since it was uploaded in a single frame, no chunk progress is needed)
+        progress?.Report(1.0);
+
+        return uploadedId;
+    }
+
+    public async Task<string> RenameRemoteFileAsync(string oldRemotePath, string newRemotePath)
     {
         EnsureConnected();
 
@@ -200,8 +300,8 @@ public class GoogleDriveProvider : ICloudProvider
         await updateRequest.ExecuteAsync();
 
         InvalidateCache(oldRemotePath);
+        return fileId;
     }
-
 
     public async Task DownloadFileAsync(string remotePath, Stream destinationStream, IProgress<double>? progress = null, CancellationToken cancellationToken = default)
     {
