@@ -721,15 +721,20 @@ public abstract class LocalToCloudJobBase : JobBase
         const int maxRetries = 3;
         int retryDelayMs = 1000;
 
+        object progressLock = new();
+        bool isFinished = false;
+
         State.ActiveTransfers[localPath] = 0.0;
 
-        int isCompleted = 0;
-
-        var progressReporter = new Progress<double>(percent =>
+        var progressReporter = new SyncProgress<double>(percent =>
         {
-            if (Volatile.Read(ref isCompleted) == 0)
+            lock (progressLock)
             {
-                State.ActiveTransfers[localPath] = percent;
+                // Only update the dictionary if the finally block hasn't cleared it [1.3.2]
+                if (!isFinished)
+                {
+                    State.ActiveTransfers[localPath] = percent;
+                }
             }
         });
         try
@@ -777,7 +782,7 @@ public abstract class LocalToCloudJobBase : JobBase
         }
         finally
         {
-            Volatile.Write(ref isCompleted, 1);
+            isFinished = true;
 
             if (!State.ActiveTransfers.TryRemove(localPath, out _))
             {
