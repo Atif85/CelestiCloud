@@ -16,7 +16,6 @@ public class JobAutoStartCommand : AsyncCommand<JobAutoStartSettings>
     protected override async Task<int> ExecuteAsync(CommandContext context, JobAutoStartSettings settings, CancellationToken ct)
     {
         var configManager = new ConfigManager();
-        var providerFactory = new ProviderFactory(configManager);
 
         IJobLogger logger = settings.Debug
             ? new ConsoleLogger { MinimumLevel = LogLevel.Debug }
@@ -27,6 +26,7 @@ public class JobAutoStartCommand : AsyncCommand<JobAutoStartSettings>
         int uploadLimit = appSettings.GlobalUploadLimitKbps;
         RateLimiter? uploadLimiter = (uploadLimit > 0) ? BandwidthLimiterFactory.CreateLimiter(uploadLimit * 1024) : null;
 
+        var providerFactory = new ProviderFactory(configManager, logger);
         var engine = new JobEngine(configManager, providerFactory, uploadLimiter, logger);
 
         var cts = new CancellationTokenSource();

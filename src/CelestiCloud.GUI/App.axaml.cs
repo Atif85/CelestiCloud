@@ -85,7 +85,6 @@ public partial class App : Application
     {
         // Initialize Core Services
         var configManager = new ConfigManager();
-        var providerFactory = new ProviderFactory(configManager);
 
         // Load Settings & Limiter
         var appSettings = configManager.LoadSettings();
@@ -98,6 +97,7 @@ public partial class App : Application
         var uiLogger = new ObservableUiLogger(fileLogger);
 
         // Create the Global Job Engine 
+        var providerFactory = new ProviderFactory(configManager, uiLogger);
         var jobEngine = new JobEngine(configManager, providerFactory, limiter, uiLogger);
 
         _ = jobEngine.StartAutoStartJobsAsync();

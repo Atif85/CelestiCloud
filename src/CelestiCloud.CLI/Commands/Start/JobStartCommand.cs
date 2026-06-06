@@ -19,7 +19,6 @@ public class JobStartCommand : AsyncCommand<JobStartSettings>
     protected override async Task<int> ExecuteAsync(CommandContext context, JobStartSettings settings, CancellationToken ct)
     {
         var configManager = new ConfigManager();
-        var providerFactory = new ProviderFactory(configManager);
         
         // Configure the Logger based on flags
         IJobLogger logger = settings.Debug
@@ -31,6 +30,7 @@ public class JobStartCommand : AsyncCommand<JobStartSettings>
         int uploadLimit = appSettings.GlobalUploadLimitKbps;
         RateLimiter? limiter = (uploadLimit > 0) ? BandwidthLimiterFactory.CreateLimiter(uploadLimit * 1024) : null;
 
+        var providerFactory = new ProviderFactory(configManager, logger);
         var engine = new JobEngine(configManager, providerFactory, limiter,  logger);
 
         // Setup termination hooks

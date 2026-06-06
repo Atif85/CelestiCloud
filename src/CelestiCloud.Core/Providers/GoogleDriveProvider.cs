@@ -1,12 +1,16 @@
+using CelestiCloud.Core.Logging;
 using CelestiCloud.Core.Models;
+using Google;
 using Google.Apis.Auth.OAuth2;
 using Google.Apis.Drive.v3;
 using Google.Apis.Services;
 using Google.Apis.Upload;
 using Google.Apis.Util.Store;
 using System.Collections.Concurrent;
+using System.Net;
 using System.Net.Http.Headers;
 using System.Reflection;
+using System.Reflection.Metadata.Ecma335;
 using System.Text;
 using System.Text.Json;
 using DriveFile = Google.Apis.Drive.v3.Data.File;
@@ -17,6 +21,8 @@ public class GoogleDriveProvider : ICloudProvider
     public string ProviderName => "Google Drive";
     private const string APP_NAME = "CelestiCloud";
     private readonly string _tokenDirectoryPath;
+
+    private readonly IJobLogger? _logger;
 
     private DriveService? _service;
 
@@ -32,11 +38,13 @@ public class GoogleDriveProvider : ICloudProvider
     private const int SmallFileThreshold = 4 * 1024 * 1024;   // 4 MB
     private const int SmallChunkSize = ResumableUpload.MinimumChunkSize;      // 256 KB
     private const int LargeChunkSize = ResumableUpload.MinimumChunkSize * 16; // 4 MB
-    private const long MultipartThreshold = 5 * 1024 * 1024;
 
-    public GoogleDriveProvider(string tokenDirectoryPath)
+    private readonly Random _jitter = new();
+
+    public GoogleDriveProvider(string tokenDirectoryPath, IJobLogger? logger = null)
     {
         _tokenDirectoryPath = tokenDirectoryPath;
+        _logger = logger;
     }
 
     public async Task ConnectAsync(CancellationToken cancellationToken = default)
@@ -89,12 +97,64 @@ public class GoogleDriveProvider : ICloudProvider
     {
         EnsureConnected();
 
-        var request = _service!.About.Get();
-        request.Fields = "user(emailAddress)";
+        return await ExecuteWithRetryAsync(async () =>
+        {
+            var request = _service!.About.Get();
+            request.Fields = "user(emailAddress)";
 
-        var about = await request.ExecuteAsync(cancellationToken);
-        return about.User?.EmailAddress ?? "unknown-email";
+            var about = await request.ExecuteAsync(cancellationToken);
+            return about.User?.EmailAddress ?? "unknown-email";
+        }, cancellationToken);
     }
+
+    private async Task<T> ExecuteWithRetryAsync<T>(Func<Task<T>> action, CancellationToken ct = default)
+    {
+        int maxRetries = 6;
+        double delaySeconds = 2.0;
+
+        for (int i = 0; i < maxRetries; i++)
+        {
+            try
+            {
+                return await action();
+            }
+            catch (GoogleApiException ex) when (IsTransientError(ex))
+            {
+                if (i == maxRetries - 1)
+                {
+                    // Reached maximum retries, we have no choice but to throw
+                    throw;
+                }
+
+                // Exponential backoff with random jitter
+                double backoffDelay = delaySeconds + _jitter.NextDouble();
+
+                _logger?.Log(LogLevel.Debug,
+                    $"Google API Rate Limited (403/429). Backing off for {backoffDelay:F2}s before retry {i + 1}/{maxRetries}...");
+
+                await Task.Delay(TimeSpan.FromSeconds(backoffDelay), ct);
+                delaySeconds *= 2; // Double the delay for the next round (2s -> 4s -> 8s -> 16s)
+            }
+        }
+
+        throw new InvalidOperationException("Failed after maximum API retries.");
+    }
+
+    private static bool IsTransientError(GoogleApiException ex)
+    {
+        // 403: rateLimitExceeded or userRateLimitExceeded
+        bool isRateLimit403 = ex.HttpStatusCode == HttpStatusCode.Forbidden
+            && ex.Error?.Errors?.Any(e => e.Reason == "rateLimitExceeded" || e.Reason == "userRateLimitExceeded") == true;
+
+        // 429: Too Many Requests
+        bool is429 = ex.HttpStatusCode == (HttpStatusCode)429;
+
+        // 5xx: Temporary Google Server Issues
+        bool is5xx = (int)ex.HttpStatusCode >= 500;
+
+        return isRateLimit403 || is429 || is5xx;
+    }
+
 
     public async Task<string> UploadFileAsync(
         Stream sourceStream,
@@ -106,174 +166,205 @@ public class GoogleDriveProvider : ICloudProvider
     {
         EnsureConnected();
 
-        // Split the remote path to get the parent folder path and the file name
-        string[] segments = remotePath.Split(['/', '\\'], StringSplitOptions.RemoveEmptyEntries);
-
-        string fileName = segments.Last();
-        string parentPath = string.Join("/", segments.Take(segments.Length - 1));
-
-        string? fileId = existingFileId;
-
-        if (!assumeNew && fileId == null)
+        return await ExecuteWithRetryAsync(async () =>
         {
-            fileId = await ResolvePathToIdAsync(remotePath);
-        }
-
-        bool remoteFileExists = fileId != null;
-
-        string mimeType = GetMimeType(remotePath);
-
-        long fileLength = sourceStream.CanSeek ? sourceStream.Length : 0;
-
-        var fileMetadata = new DriveFile { Name = fileName };
-        int chunkSize = fileLength < SmallFileThreshold ? SmallChunkSize : LargeChunkSize;
-
-        ResumableUpload<DriveFile, DriveFile> uploadRequest;
-
-        if (remoteFileExists)
-        {
-            uploadRequest = _service!.Files.Update(fileMetadata, fileId!, sourceStream, mimeType);
-        }
-        else
-        {
-            // Ensure the remote directory exists (creates it if it doesn't)
-            string parentFolderId = await ResolvePathToIdAsync(parentPath, createIfMissing: true)
-                                    ?? throw new Exception("Failed to resolve or create remote parent folder.");
-
-            fileMetadata.Parents = [parentFolderId];
-            uploadRequest = _service!.Files.Create(fileMetadata, sourceStream, mimeType);
-        }
-
-        uploadRequest.ChunkSize = chunkSize;
-
-        // Attach progress reporter if provided
-        if (progress != null)
-        {
-            uploadRequest.ProgressChanged += uploadProgress =>
+            if (sourceStream.CanSeek)
             {
-                if (uploadProgress.Status == UploadStatus.Uploading)
-                {
-                    double percentage = uploadProgress.BytesSent / ((double)fileLength);
-                    progress.Report(percentage);
-                }
-            };
-        }
-
-        var response = await uploadRequest.UploadAsync(cancellationToken);
-
-        if (response.Status == UploadStatus.Failed)
-        {
-            if (response.Exception is OperationCanceledException || cancellationToken.IsCancellationRequested)
-            {
-                throw new OperationCanceledException("Upload was canceled by the user.", response.Exception, cancellationToken);
+                sourceStream.Position = 0;
             }
 
-            throw new Exception($"Upload failed: {response.Exception?.Message}", response.Exception);
-        }
+            // Split the remote path to get the parent folder path and the file name
+            string[] segments = remotePath.Split(['/', '\\'], StringSplitOptions.RemoveEmptyEntries);
 
-        string uploadedId = uploadRequest.ResponseBody?.Id
-            ?? fileId
-            ?? throw new Exception("Failed to retrieve file ID from Google Drive.");
+            string fileName = segments.Last();
+            string parentPath = string.Join("/", segments.Take(segments.Length - 1));
 
-        progress?.Report(1.0); // 100% complete
+            string? fileId = existingFileId;
 
-        return uploadedId;
+            if (!assumeNew && fileId == null)
+            {
+                fileId = await ResolvePathToIdAsync(remotePath);
+            }
+
+            bool remoteFileExists = fileId != null;
+
+            string mimeType = GetMimeType(remotePath);
+
+            long fileLength = sourceStream.CanSeek ? sourceStream.Length : 0;
+
+            var fileMetadata = new DriveFile { Name = fileName };
+            int chunkSize = fileLength < SmallFileThreshold ? SmallChunkSize : LargeChunkSize;
+
+            ResumableUpload<DriveFile, DriveFile> uploadRequest;
+
+            if (remoteFileExists)
+            {
+                uploadRequest = _service!.Files.Update(fileMetadata, fileId!, sourceStream, mimeType);
+            }
+            else
+            {
+                // Ensure the remote directory exists (creates it if it doesn't)
+                string parentFolderId = await ResolvePathToIdAsync(parentPath, createIfMissing: true)
+                                        ?? throw new Exception("Failed to resolve or create remote parent folder.");
+
+                fileMetadata.Parents = [parentFolderId];
+                uploadRequest = _service!.Files.Create(fileMetadata, sourceStream, mimeType);
+            }
+
+            uploadRequest.ChunkSize = chunkSize;
+
+            // Attach progress reporter if provided
+            if (progress != null)
+            {
+                uploadRequest.ProgressChanged += uploadProgress =>
+                {
+                    if (uploadProgress.Status == UploadStatus.Uploading)
+                    {
+                        double percentage = uploadProgress.BytesSent / ((double)fileLength);
+                        progress.Report(percentage);
+                    }
+                };
+            }
+
+            var response = await uploadRequest.UploadAsync(cancellationToken);
+
+            if (response.Status == UploadStatus.Failed)
+            {
+                if (response.Exception is OperationCanceledException || cancellationToken.IsCancellationRequested)
+                {
+                    throw new OperationCanceledException("Upload was canceled by the user.", response.Exception, cancellationToken);
+                }
+
+                if (response.Exception is GoogleApiException apiEx)
+                {
+                    throw apiEx;
+                }
+
+                throw new Exception($"Upload failed: {response.Exception?.Message}", response.Exception);
+            }
+
+            string uploadedId = uploadRequest.ResponseBody?.Id
+                ?? fileId
+                ?? throw new Exception("Failed to retrieve file ID from Google Drive.");
+
+            progress?.Report(1.0); // 100% complete
+
+            return uploadedId;
+        });
     }
 
     public async Task<string> RenameRemoteFileAsync(string oldRemotePath, string newRemotePath)
     {
         EnsureConnected();
 
-        string? fileId = await ResolvePathToIdAsync(oldRemotePath) 
+        return await ExecuteWithRetryAsync(async () =>
+        {
+            string? fileId = await ResolvePathToIdAsync(oldRemotePath) 
             ?? throw new FileNotFoundException($"Cannot rename, remote file not found: {oldRemotePath}");
 
-        string newName = Path.GetFileName(newRemotePath);
-        string oldParentPath = Path.GetDirectoryName(oldRemotePath)?.Replace('\\', '/') ?? "/";
-        string newParentPath = Path.GetDirectoryName(newRemotePath)?.Replace('\\', '/') ?? "/";
+            string newName = Path.GetFileName(newRemotePath);
+            string oldParentPath = Path.GetDirectoryName(oldRemotePath)?.Replace('\\', '/') ?? "/";
+            string newParentPath = Path.GetDirectoryName(newRemotePath)?.Replace('\\', '/') ?? "/";
 
-        var updateRequest = _service!.Files.Update(new DriveFile { Name = newName }, fileId);
+            var updateRequest = _service!.Files.Update(new DriveFile { Name = newName }, fileId);
 
-        // If the file was moved to a different folder, we update the parents
-        if (oldParentPath != newParentPath)
-        {
-            string? oldParentId = await ResolvePathToIdAsync(oldParentPath);
-            string? newParentId = await ResolvePathToIdAsync(newParentPath, createIfMissing: true);
-
-            if (oldParentId != null && newParentId != null)
+            // If the file was moved to a different folder, we update the parents
+            if (oldParentPath != newParentPath)
             {
-                updateRequest.RemoveParents = oldParentId;
-                updateRequest.AddParents = newParentId;
+                string? oldParentId = await ResolvePathToIdAsync(oldParentPath);
+                string? newParentId = await ResolvePathToIdAsync(newParentPath, createIfMissing: true);
+
+                if (oldParentId != null && newParentId != null)
+                {
+                    updateRequest.RemoveParents = oldParentId;
+                    updateRequest.AddParents = newParentId;
+                }
             }
-        }
 
-        await updateRequest.ExecuteAsync();
+            await updateRequest.ExecuteAsync();
 
-        InvalidateCache(oldRemotePath);
-        return fileId;
+            InvalidateCache(oldRemotePath);
+            return fileId;
+        });
     }
 
     public async Task DownloadFileAsync(string remotePath, Stream destinationStream, IProgress<double>? progress = null, CancellationToken cancellationToken = default)
     {
         EnsureConnected();
 
-        string? remoteFileId = await ResolvePathToIdAsync(remotePath);
-        if (remoteFileId == null) 
-            throw new FileNotFoundException($"Remote file not found: {remotePath}");
-
-        long fileSize = 0;
-        if (progress != null)
+        await ExecuteWithRetryAsync<object?>(async () =>
         {
-            var metaRequest = _service!.Files.Get(remoteFileId);
-            metaRequest.Fields = "size";
-            var fileMeta = await metaRequest.ExecuteAsync();
-            fileSize = fileMeta.Size ?? 0;
-        }
-
-        var request = _service!.Files.Get(remoteFileId);
-
-        if (progress != null && fileSize > 0)
-        {
-            request.MediaDownloader.ProgressChanged += (Google.Apis.Download.IDownloadProgress downloadProgress) =>
+            // Reset and truncate destination stream if retry happens
+            if (destinationStream.CanSeek)
             {
-                if (downloadProgress.Status == Google.Apis.Download.DownloadStatus.Downloading)
+                destinationStream.Position = 0;
+                destinationStream.SetLength(0);
+            }
+
+            string? remoteFileId = await ResolvePathToIdAsync(remotePath);
+            if (remoteFileId == null)
+                throw new FileNotFoundException($"Remote file not found: {remotePath}");
+
+            long fileSize = 0;
+            if (progress != null)
+            {
+                var metaRequest = _service!.Files.Get(remoteFileId);
+                metaRequest.Fields = "size";
+                var fileMeta = await metaRequest.ExecuteAsync();
+                fileSize = fileMeta.Size ?? 0;
+            }
+
+            var request = _service!.Files.Get(remoteFileId);
+
+            if (progress != null && fileSize > 0)
+            {
+                request.MediaDownloader.ProgressChanged += (Google.Apis.Download.IDownloadProgress downloadProgress) =>
                 {
-                    double percentage = (double)downloadProgress.BytesDownloaded / fileSize;
-                    progress.Report(Math.Min(percentage, 1.0)); // Cap at 1.0 just in case
-                }
-            };
-        }
+                    if (downloadProgress.Status == Google.Apis.Download.DownloadStatus.Downloading)
+                    {
+                        double percentage = (double)downloadProgress.BytesDownloaded / fileSize;
+                        progress.Report(Math.Min(percentage, 1.0)); // Cap at 1.0 just in case
+                    }
+                };
+            }
 
-        var response = await request.DownloadAsync(destinationStream, cancellationToken);
+            var response = await request.DownloadAsync(destinationStream, cancellationToken);
 
-        if (response.Status == Google.Apis.Download.DownloadStatus.Failed)
-        {
-            throw new Exception($"Download failed: {response.Exception?.Message}", response.Exception);
-        }
+            if (response.Status == Google.Apis.Download.DownloadStatus.Failed)
+            {
+                throw new Exception($"Download failed: {response.Exception?.Message}", response.Exception);
+            }
 
-        progress?.Report(1.0); // 100% complete
+            progress?.Report(1.0); // 100% complete
+            return null;
+        }, cancellationToken);
     }
 
     public async Task DeleteRemoteFileAsync(string remotePath, bool moveToTrash = true)
     {
         EnsureConnected();
 
-        string? remoteFileId = await ResolvePathToIdAsync(remotePath);
-
-        if (remoteFileId == null) return;
-
-        if (moveToTrash)
+        await ExecuteWithRetryAsync<object?>(async () =>
         {
-            DriveFile fileMetadata = new() { Trashed = true };
-            var request = _service!.Files.Update(fileMetadata, remoteFileId);
-            await request.ExecuteAsync();
-        }
-        else
-        {
-            var request = _service!.Files.Delete(remoteFileId);
-            await request.ExecuteAsync();
-        }
+            string? remoteFileId = await ResolvePathToIdAsync(remotePath);
 
-        InvalidateCache(remotePath);
+            if (remoteFileId == null) return null;
+
+            if (moveToTrash)
+            {
+                DriveFile fileMetadata = new() { Trashed = true };
+                var request = _service!.Files.Update(fileMetadata, remoteFileId);
+                await request.ExecuteAsync();
+            }
+            else
+            {
+                var request = _service!.Files.Delete(remoteFileId);
+                await request.ExecuteAsync();
+            }
+
+            InvalidateCache(remotePath);
+            return null;
+        });
     }
 
     public async Task<IEnumerable<CloudFile>> ListFilesAsync(string remotePath)
@@ -293,10 +384,10 @@ public class GoogleDriveProvider : ICloudProvider
             var request = _service!.Files.List();
             request.Q = $"'{folderId}' in parents and trashed = false";
             request.Fields = "nextPageToken, files(id, name, mimeType, size, modifiedTime)";
-            request.PageSize = 1000; // was default 100 — reduces round-trips for large folders
+            request.PageSize = 1000;
             if (pageToken != null) request.PageToken = pageToken;
 
-            var result = await request.ExecuteAsync();
+            var result = await ExecuteWithRetryAsync(() => request.ExecuteAsync());
 
             foreach (var file in result.Files)
             {
@@ -409,7 +500,7 @@ public class GoogleDriveProvider : ICloudProvider
         request.Q = $"name = '{safeSegment}' and '{parentId}' in parents and trashed = false";
         request.Fields = "files(id, mimeType)";
 
-        var result = await request.ExecuteAsync();
+        var result = await ExecuteWithRetryAsync(() => request.ExecuteAsync());
         var file = result.Files.FirstOrDefault();
 
         if (file != null)
@@ -433,7 +524,7 @@ public class GoogleDriveProvider : ICloudProvider
 
             var createRequest = _service.Files.Create(folderMetadata);
             createRequest.Fields = "id";
-            var newFolder = await createRequest.ExecuteAsync();
+            var newFolder = await ExecuteWithRetryAsync(() => createRequest.ExecuteAsync());
 
             _folderCache[path] = newFolder.Id;
             return newFolder.Id;
@@ -462,7 +553,7 @@ public class GoogleDriveProvider : ICloudProvider
         }
     }
 
-    private string GetMimeType(string fileName)
+    private static string GetMimeType(string fileName)
     {
         string ext = Path.GetExtension(fileName).ToLower();
         return ext switch

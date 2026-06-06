@@ -1,23 +1,22 @@
 ﻿using CelestiCloud.Core.Config;
+using CelestiCloud.Core.Logging;
 using CelestiCloud.Core.Models;
-using System;
 using System.Collections.Concurrent;
-using System.IO;
-using System.Threading;
-using System.Threading.Tasks;
 
 namespace CelestiCloud.Core.Providers;
 
 public class ProviderFactory
 {
     private readonly ConfigManager _configManager;
+    private readonly IJobLogger? _logger;
 
     private readonly ConcurrentDictionary<string, ICloudProvider> _providerCache = new();
     private readonly SemaphoreSlim _factoryLock = new(1, 1);
 
-    public ProviderFactory(ConfigManager configManager)
+    public ProviderFactory(ConfigManager configManager, IJobLogger? logger = null)
     {
         _configManager = configManager ?? throw new ArgumentNullException(nameof(configManager));
+        _logger = logger;
     }
 
     public async Task<ICloudProvider> GetOrCreateProviderAsync(AccountConfig account, CancellationToken ct = default)
@@ -45,7 +44,7 @@ public class ProviderFactory
                 // Map the token store specifically to this account
                 string tokenDirectory = Path.Combine(_configManager.GetTokensDirectory(), account.Id);
 
-                var gDriveProvider = new GoogleDriveProvider(tokenDirectory);
+                var gDriveProvider = new GoogleDriveProvider(tokenDirectory, _logger);
                 await gDriveProvider.ConnectAsync(ct);
 
                 newProvider = gDriveProvider;
