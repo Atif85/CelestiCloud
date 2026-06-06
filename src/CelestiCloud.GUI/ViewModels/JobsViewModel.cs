@@ -96,7 +96,10 @@ public partial class JobsViewModel : ViewModelBase
         _uiLogger = uiLogger;
         _notificationService = notiService;
 
-        _statusTimer = new DispatcherTimer { Interval = TimeSpan.FromSeconds(1) };
+        _jobEngine.JobStarted += OnJobEngineStarted;
+        _jobEngine.JobStopped += OnJobEngineStopped;
+
+        _statusTimer = new DispatcherTimer { Interval = TimeSpan.FromSeconds(10) };
         _statusTimer.Tick += (s, e) =>
         {
             if (SelectedJobDetails != null && !IsTogglingState)
@@ -113,6 +116,38 @@ public partial class JobsViewModel : ViewModelBase
         _statusTimer.Start();
 
         LoadData();
+    }
+
+    private void OnJobEngineStarted(object? sender, string jobId)
+    {
+        Dispatcher.UIThread.Post(() =>
+        {
+            // Update the card item in the list
+            var uiJob = Jobs.FirstOrDefault(j => j.Config.Id == jobId);
+            uiJob?.IsRunning = true;
+
+            // Update the detail modal if it's currently open
+            if (SelectedJobDetails != null && SelectedJobDetails.Id == jobId)
+            {
+                IsSelectedJobRunning = true;
+            }
+        });
+    }
+
+    private void OnJobEngineStopped(object? sender, string jobId)
+    {
+        Dispatcher.UIThread.Post(() =>
+        {
+            // Update the card item in the list
+            var uiJob = Jobs.FirstOrDefault(j => j.Config.Id == jobId);
+            uiJob?.IsRunning = false;
+
+            // Update the detail modal if it's currently open
+            if (SelectedJobDetails != null && SelectedJobDetails.Id == jobId)
+            {
+                IsSelectedJobRunning = false;
+            }
+        });
     }
 
     private void LoadData()
@@ -253,12 +288,12 @@ public partial class JobsViewModel : ViewModelBase
     }
 
     partial void OnEditingTargetAccountChanged(AccountConfig? value)
-{
-    if (EditingJob != null && value != null)
     {
-        EditingJob.TargetAccountId = value.Id;
+        if (EditingJob != null && value != null)
+        {
+            EditingJob.TargetAccountId = value.Id;
+        }
     }
-}
 
     [RelayCommand]
     private void AddLocalPath()
@@ -374,27 +409,37 @@ public partial class JobsViewModel : ViewModelBase
     [RelayCommand]
     private async Task BrowseLocalPathAsync()
     {
-        if (Application.Current?.ApplicationLifetime is IClassicDesktopStyleApplicationLifetime desktop)
+        if (Application.Current?.ApplicationLifetime is not IClassicDesktopStyleApplicationLifetime desktop)
         {
-            var topLevel = TopLevel.GetTopLevel(desktop.MainWindow);
-
-            if (topLevel != null)
-            {
-                // Open the native operating system's folder selection dialog
-                var result = await topLevel.StorageProvider.OpenFolderPickerAsync(new FolderPickerOpenOptions
-                {
-                    Title = "Select Folder to Sync",
-                    AllowMultiple = false
-                });
-
-                if (result != null && result.Count > 0)
-                {
-                    // Convert the storage path URI to a standard, absolute local OS path 
-                    string selectedPath = result[0].Path.LocalPath;
-
-                    NewLocalPathInput = selectedPath;
-                }
-            }
+            return;
         }
+
+        var topLevel = TopLevel.GetTopLevel(desktop.MainWindow);
+
+        if (topLevel == null)
+        {
+            return;
+        }
+
+        // Open the native operating system's folder selection dialog
+        var result = await topLevel.StorageProvider.OpenFolderPickerAsync(new FolderPickerOpenOptions
+        {
+            Title = "Select Folder to Sync",
+            AllowMultiple = false
+        });
+
+        if (result != null && result.Count > 0)
+        {
+            // Convert the storage path URI to a standard, absolute local OS path 
+            string selectedPath = result[0].Path.LocalPath;
+
+            NewLocalPathInput = selectedPath;
+        }
+    }
+    ~JobsViewModel()
+    {
+        _statusTimer.Stop();
+        _jobEngine.JobStarted -= OnJobEngineStarted;
+        _jobEngine.JobStopped -= OnJobEngineStopped;
     }
 }
