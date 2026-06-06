@@ -336,6 +336,12 @@ public abstract class LocalToCloudJobBase : JobBase
 
     private async Task ReconcileFileAsync(string localPath, string remotePath, CancellationToken ct)
     {
+        if (!File.Exists(localPath))
+        {
+            Logger.Log(LogLevel.Debug, $"[Reconcile] Skipped '{localPath}' because it no longer exists on the local disk.");
+            return;
+        }
+
         var localInfo = new FileInfo(localPath);
         string parentRemoteFolder = Path.GetDirectoryName(remotePath)?.Replace('\\', '/') ?? "/";
         string fileName = Path.GetFileName(remotePath);
