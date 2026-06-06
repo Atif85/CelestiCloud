@@ -92,7 +92,7 @@
                                             <ItemsControl.ItemTemplate>
                                                 <!-- Targeting TransferProgressViewModel -->
                                                 <DataTemplate x:DataType="vm:TransferProgressViewModel">
-                                                    <Grid ColumnDefinitions="*, Auto, 200, Auto" Margin="0,5">
+                                                    <Grid ColumnDefinitions="*, Auto, 200, 40" Margin="0,5">
                                                         <!-- CLICKABLE HYPERLINK FILE PATH -->
                                                         <Button Grid.Column="0" 
                                                                 Command="{Binding OpenContainingFolderCommand}"

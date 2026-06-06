@@ -16,6 +16,9 @@ public class JobEngine
     private RateLimiter? _uploadLimiter;
     private readonly IJobLogger _logger;
 
+    public event EventHandler<string>? JobStarted;
+    public event EventHandler<string>? JobStopped;
+
     public event Action<string, string, string>? NotificationRequested;
 
     // Tracks currently executing jobs in memory: JobId -> JobInstance
@@ -81,6 +84,8 @@ public class JobEngine
         // Register and run the job asynchronously in the background
         if (_activeJobs.TryAdd(jobId, jobInstance))
         {
+            JobStarted?.Invoke(this, jobId);
+
             // Fire and forget task execution, but monitor errors
             _ = Task.Run(async () =>
             {
@@ -94,7 +99,10 @@ public class JobEngine
                 }
                 finally
                 {
-                    _activeJobs.TryRemove(jobId, out _);
+                    if (_activeJobs.TryRemove(jobId, out _))
+                    {
+                        JobStopped?.Invoke(this, jobId);
+                    }
                 }
             });
         }
@@ -106,6 +114,11 @@ public class JobEngine
         {
             _logger.Log(LogLevel.Info, $"Stopping job '{job.Config.Name}'...");
             await job.StopAsync();
+
+            if (_activeJobs.TryRemove(jobId, out _))
+            {
+                JobStopped?.Invoke(this, jobId);
+            }
         }
     }
 
@@ -144,7 +157,14 @@ public class JobEngine
         _logger.Log(LogLevel.Debug, "Stopping all active jobs in JobEngine...");
         var stopTasks = _activeJobs.Values.Select(job => job.StopAsync()).ToList();
         await Task.WhenAll(stopTasks);
+
+        var stoppedIds = _activeJobs.Keys.ToList();
         _activeJobs.Clear();
+
+        foreach (var id in stoppedIds)
+        {
+            JobStopped?.Invoke(this, id);
+        }
     }
 
     public void UpdateUploadLimit(int uploadLimitKbps)

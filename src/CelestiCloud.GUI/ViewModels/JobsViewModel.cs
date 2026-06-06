@@ -99,7 +99,7 @@ public partial class JobsViewModel : ViewModelBase
         _statusTimer = new DispatcherTimer { Interval = TimeSpan.FromSeconds(1) };
         _statusTimer.Tick += (s, e) =>
         {
-            if (SelectedJobDetails != null)
+            if (SelectedJobDetails != null && !IsTogglingState)
             {
                 IsSelectedJobRunning = _jobEngine.GetActiveJobs().Any(j => j.Config.Id == SelectedJobDetails.Id);
             }
@@ -163,6 +163,8 @@ public partial class JobsViewModel : ViewModelBase
 
         IsTogglingState = true;
 
+        await Task.Delay(150); 
+
         try
         {
             if (IsSelectedJobRunning)
@@ -174,7 +176,11 @@ public partial class JobsViewModel : ViewModelBase
                 await _jobEngine.StartJobAsync(SelectedJobDetails.Id);
             }
 
-            IsSelectedJobRunning = !IsSelectedJobRunning;
+            IsSelectedJobRunning = _jobEngine.GetActiveJobs().Any(j => j.Config.Id == SelectedJobDetails.Id);
+        }
+        catch (Exception ex)
+        {
+            _uiLogger.Log(LogLevel.Error, $"Error toggling job state: {ex.Message}");
         }
         finally
         {

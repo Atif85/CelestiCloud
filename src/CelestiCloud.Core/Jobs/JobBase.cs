@@ -14,6 +14,7 @@ public abstract class JobBase
 
     private readonly Lock _lock = new();
     private CancellationTokenSource? _cts;
+    private Task? _executionTask;
 
     protected JobBase(JobConfig config, string appDataPath)
     {
@@ -47,7 +48,8 @@ public abstract class JobBase
         try
         {
             // Execute the actual job implemented by subclasses
-            await ExecuteAsync(_cts.Token);
+            _executionTask = ExecuteAsync(_cts.Token);
+            await _executionTask;
         }
         catch (OperationCanceledException)
         {
@@ -62,34 +64,43 @@ public abstract class JobBase
                 IsRunning = false;
                 _cts?.Dispose();
                 _cts = null;
+                _executionTask = null;
             }
         }
     }
 
-    public Task StopAsync()
+    public async Task StopAsync()
     {
-        JobLockManager.ReleaseLock(Config.Id, AppDataPath);
-
         CancellationTokenSource? cts;
+        Task? executionTask;
+
         lock (_lock)
         {
             cts = _cts;
+            executionTask = _executionTask;
         }
 
         if (cts != null)
         {
-            _ = Task.Run(() =>
+            try
             {
-                try
-                {
-                    cts.Cancel();
-                }
-                catch (ObjectDisposedException) { }
-                catch (Exception) { }
-            });
+                cts.Cancel();
+            }
+            catch (ObjectDisposedException) { }
+            catch (Exception) { }
         }
 
-        return Task.CompletedTask;
+        if (executionTask != null)
+        {
+            try
+            {
+                await executionTask;
+            }
+            catch (OperationCanceledException) { }
+            catch (Exception) { }
+        }
+
+        JobLockManager.ReleaseLock(Config.Id, AppDataPath);
     }
 
     /// <summary>

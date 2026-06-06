@@ -167,40 +167,53 @@
                         </ScrollViewer>
 
                         <!-- Footer Actions -->
-                        <Border Grid.Row="2" Background="{DynamicResource AppBackgroundBrush}" BorderBrush="{DynamicResource DividerBrush}" BorderThickness="0,1,0,0" CornerRadius="0,0,12,12" Padding="24,16">
-                            <Grid ColumnDefinitions="*, Auto">
-                                
-                                <!-- Play/Stop Action -->
-                                <Button Grid.Column="0" HorizontalAlignment="Left"
-                                        Command="{Binding ToggleSelectedJobStateCommand}" 
-                                        IsEnabled="{Binding !IsTogglingState}"
-                                        Padding="16,8" CornerRadius="6" Cursor="Hand"> 
-                                    <Panel>
-        
-                                        <!-- Start State -->
-                                        <StackPanel Orientation="Horizontal" Spacing="8" IsVisible="{Binding IsStartButtonVisible}">
-                                            <TextBlock Text="▶" Foreground="#4CAF50"/>
-                                            <TextBlock Text="Start Job" FontWeight="Bold"/>
-                                        </StackPanel>
-        
-                                        <!-- Stop State -->
-                                        <StackPanel Orientation="Horizontal" Spacing="8" IsVisible="{Binding IsStopButtonVisible}">
-                                            <TextBlock Text="⏹" Foreground="#FF5252"/>
-                                            <TextBlock Text="Stop Job" FontWeight="Bold"/>
-                                        </StackPanel>
+                        <Border Grid.Row="2"
+                                Background="{DynamicResource AppBackgroundBrush}"
+                                BorderBrush="{DynamicResource DividerBrush}" 
+                                BorderThickness="0,1,0,0"
+                                CornerRadius="0,0,12,12" Padding="24,16">
 
-                                        <!-- Processing State (Prevents confusion while waiting for the engine) -->
-                                        <StackPanel Orientation="Horizontal" Spacing="8" IsVisible="{Binding IsProcessingButtonVisible}">
+                            <Grid ColumnDefinitions="*, Auto">
+        
+                                <!-- Action Trigger Area -->
+                                <Panel Grid.Column="0" HorizontalAlignment="Left">
+            
+                                    <!-- LAYER A: THE INTERACTABLE TOGGLE BUTTON (Only visible when NOT processing) -->
+                                    <Button Command="{Binding ToggleSelectedJobStateCommand}" 
+                                            IsVisible="{Binding !IsTogglingState}"
+                                            Padding="16,8" CornerRadius="6" Cursor="Hand"> 
+                                        <Panel>
+                                            <!-- Start State -->
+                                            <StackPanel Orientation="Horizontal" Spacing="8" IsVisible="{Binding IsStartButtonVisible}">
+                                                <TextBlock Text="▶" Foreground="#4CAF50"/>
+                                                <TextBlock Text="Start Job" FontWeight="Bold"/>
+                                            </StackPanel>
+
+                                            <!-- Stop State -->
+                                            <StackPanel Orientation="Horizontal" Spacing="8" IsVisible="{Binding IsStopButtonVisible}">
+                                                <TextBlock Text="⏹" Foreground="#FF5252"/>
+                                                <TextBlock Text="Stop Job" FontWeight="Bold"/>
+                                            </StackPanel>
+                                        </Panel>
+                                    </Button>
+
+                                    <!-- LAYER B: THE PROCESSING CARD (Only visible when processing) -->
+                                    <Border IsVisible="{Binding IsProcessingButtonVisible}"
+                                            Background="#2C2C2E"
+                                            BorderBrush="{DynamicResource DividerBrush}"
+                                            BorderThickness="1"
+                                            Padding="16,8" CornerRadius="6">
+                                        <StackPanel Orientation="Horizontal" Spacing="8">
                                             <TextBlock Text="⏳" Foreground="#FFC107"/>
                                             <TextBlock Text="Processing..." FontWeight="Bold" Foreground="{DynamicResource TextSecondaryBrush}"/>
                                         </StackPanel>
-        
-                                    </Panel>
-                                </Button>
+                                    </Border>
+                                </Panel>
 
+                                <!-- Right Buttons -->
                                 <StackPanel Grid.Column="1" Orientation="Horizontal" Spacing="10">
-                                    <Button Content="Edit" Command="{Binding OpenEditJobCommand}" CornerRadius="6" Padding="16,8" Cursor="Hand"/>
-                                    <Button Content="Close" Command="{Binding CloseJobDetailsCommand}" CornerRadius="6" Padding="16,8" Cursor="Hand"/>
+                                    <Button Content="Edit" Command="{Binding OpenEditJobCommand}" CornerRadius="6" Padding="16,8" Cursor="Hand" IsEnabled="{Binding !IsTogglingState}"/>
+                                    <Button Content="Close" Command="{Binding CloseJobDetailsCommand}" CornerRadius="6" Padding="16,8" Cursor="Hand" IsEnabled="{Binding !IsTogglingState}"/>
                                 </StackPanel>
                             </Grid>
                         </Border>
