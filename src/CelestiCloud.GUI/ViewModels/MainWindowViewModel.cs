@@ -66,6 +66,11 @@ public partial class MainWindowViewModel : ViewModelBase
         IsJobsActive = targetLower == "jobs";
         IsAccountsActive = targetLower == "accounts";
         IsSettingsActive = targetLower == "settings";
+
+        if (IsAccountsActive)
+        {
+            AccountsVm.LoadAccountsAsync();
+        }
     }
 
 
