@@ -5,6 +5,12 @@ namespace CelestiCloud.Core.Config;
 
 public class ConfigManager
 {
+    public event Action<AccountConfig>? AccountSaved;
+    public event Action<string>? AccountDeleted;
+    public event Action<JobConfig>? JobSaved;
+    public event Action<string>? JobDeleted;
+
+
     private readonly string _appDataPath;
     private readonly string _jobsDirectory;
     private readonly string _accountsDirectory;
@@ -30,17 +36,6 @@ public class ConfigManager
     public string GetTokensDirectory() => Path.Combine(_appDataPath, "tokens");
 
     #region Jobs
-
-    public void SaveJob(JobConfig job)
-    {
-        if (string.IsNullOrWhiteSpace(job.Id))
-            throw new ArgumentException("Job ID cannot be empty.", nameof(job));
-
-        string filePath = Path.Combine(_jobsDirectory, $"{job.Id}.json");
-        string json = JsonSerializer.Serialize(job, _options);
-
-        File.WriteAllText(filePath, json);
-    }
 
     public JobConfig? LoadJob(string jobId)
     {
@@ -93,6 +88,18 @@ public class ConfigManager
         return jobs;
     }
 
+    public void SaveJob(JobConfig job)
+    {
+        if (string.IsNullOrWhiteSpace(job.Id))
+            throw new ArgumentException("Job ID cannot be empty.", nameof(job));
+
+        string filePath = Path.Combine(_jobsDirectory, $"{job.Id}.json");
+        string json = JsonSerializer.Serialize(job, _options);
+
+        File.WriteAllText(filePath, json);
+        JobSaved?.Invoke(job);
+    }
+
     public void DeleteJob(string jobId)
     {
         string filePath = Path.Combine(_jobsDirectory, $"{jobId}.json");
@@ -107,22 +114,12 @@ public class ConfigManager
         {
             File.Delete(lockPath);
         }
+        JobDeleted?.Invoke(jobId);
     }
 
     #endregion
 
     #region Accounts
-
-    public void SaveAccount(AccountConfig account)
-    {
-        if (string.IsNullOrWhiteSpace(account.Id))
-            throw new ArgumentException("Account ID cannot be empty.", nameof(account));
-
-        string filePath = Path.Combine(_accountsDirectory, $"{account.Id}.json");
-        string json = JsonSerializer.Serialize(account, _options);
-
-        File.WriteAllText(filePath, json);
-    }
 
     public AccountConfig? LoadAccount(string accountId)
     {
@@ -169,6 +166,19 @@ public class ConfigManager
         return accounts;
     }
 
+    public void SaveAccount(AccountConfig account)
+    {
+        if (string.IsNullOrWhiteSpace(account.Id))
+            throw new ArgumentException("Account ID cannot be empty.", nameof(account));
+
+        string filePath = Path.Combine(_accountsDirectory, $"{account.Id}.json");
+        string json = JsonSerializer.Serialize(account, _options);
+
+        File.WriteAllText(filePath, json);
+
+        AccountSaved?.Invoke(account);
+    }
+
     public void DeleteAccount(string accountId)
     {
         string filePath = Path.Combine(_accountsDirectory, $"{accountId}.json");
@@ -183,6 +193,8 @@ public class ConfigManager
         {
             SafeDeleteDirectory(tokenPath);
         }
+
+        AccountDeleted?.Invoke(accountId);
     }
 
     private static void SafeDeleteDirectory(string targetDir)

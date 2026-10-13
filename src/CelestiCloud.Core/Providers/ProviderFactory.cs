@@ -63,4 +63,16 @@ public class ProviderFactory
             _factoryLock.Release();
         }
     }
+
+    public void InvalidateProvider(string accountId)
+    {
+        if (_providerCache.TryRemove(accountId, out var provider))
+        {
+            if (provider is IDisposable disposable)
+            {
+                disposable.Dispose();
+            }
+            _logger?.Log(LogLevel.Debug, $"Evicted provider cache for account ID: {accountId}");
+        }
+    }
 }

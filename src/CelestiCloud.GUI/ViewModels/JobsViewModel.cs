@@ -99,6 +99,9 @@ public partial class JobsViewModel : ViewModelBase
         _jobEngine.JobStarted += OnJobEngineStarted;
         _jobEngine.JobStopped += OnJobEngineStopped;
 
+        _configManager.AccountSaved += (_) => LoadData();
+        _configManager.AccountDeleted += (_) => LoadData();
+
         _statusTimer = new DispatcherTimer { Interval = TimeSpan.FromSeconds(10) };
         _statusTimer.Tick += (s, e) =>
         {

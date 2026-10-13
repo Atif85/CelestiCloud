@@ -49,7 +49,7 @@ public partial class MainWindowViewModel : ViewModelBase
 
         DashboardVm = new DashboardViewModel(configManager, jobEngine, uiLogger);
         JobsVm = new JobsViewModel(configManager, jobEngine, uiLogger , notificationService);
-        AccountsVm = new AccountsViewModel(configManager, providerFactory, uiLogger, notificationService);
+        AccountsVm = new AccountsViewModel(configManager, jobEngine, providerFactory, uiLogger, notificationService);
         SettingsVm = new SettingsViewModel(configManager, jobEngine, uiLogger);
     }
 

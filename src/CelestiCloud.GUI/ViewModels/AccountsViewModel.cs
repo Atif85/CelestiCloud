@@ -1,5 +1,6 @@
 ﻿using Avalonia.Threading;
 using CelestiCloud.Core.Config;
+using CelestiCloud.Core.Jobs;
 using CelestiCloud.Core.Logging;
 using CelestiCloud.Core.Models;
 using CelestiCloud.Core.Providers;
@@ -9,6 +10,7 @@ using CommunityToolkit.Mvvm.ComponentModel;
 using CommunityToolkit.Mvvm.Input;
 using System;
 using System.Collections.ObjectModel;
+using System.Linq;
 using System.Threading;
 using System.Threading.Tasks;
 
@@ -17,6 +19,7 @@ namespace CelestiCloud.GUI.ViewModels;
 public partial class AccountsViewModel : ViewModelBase
 {
     private readonly ConfigManager _configManager;
+    private readonly JobEngine _jobEngine;
     private readonly ProviderFactory _providerFactory;
     private readonly ObservableUiLogger _uiLogger;
     private readonly INotificationService _notificationService;
@@ -63,9 +66,10 @@ public partial class AccountsViewModel : ViewModelBase
     [ObservableProperty]
     private AccountConfig? _selectedAccountDetails;
 
-    public AccountsViewModel(ConfigManager configManager, ProviderFactory providerFactory, ObservableUiLogger uiLogger, INotificationService notiService)
+    public AccountsViewModel(ConfigManager configManager, JobEngine jobEngine, ProviderFactory providerFactory, ObservableUiLogger uiLogger, INotificationService notiService)
     {
         _configManager = configManager;
+        _jobEngine = jobEngine;
         _providerFactory = providerFactory;
         _uiLogger = uiLogger;
         _notificationService = notiService;
@@ -187,19 +191,44 @@ public partial class AccountsViewModel : ViewModelBase
     {
         if (SelectedAccountDetails == null) return;
 
+        string accountId = SelectedAccountDetails.Id;
+        string accountName = SelectedAccountDetails.DisplayName;
+
         IsDetailsOpen = false;
         IsRemoveAccountOpen = true;
         IsRemoving = true;
         HasRemoveError = false;
-        RemoveStatusMessage = "Contacting provider to securely revoke access...";
 
         try
         {
+            // Stop any running jobs that are using this account
+            var runningAffectedJobs = _jobEngine.GetActiveJobs()
+                .Where(j => j.Config.TargetAccountId == accountId)
+                .ToList();
+
+            if (runningAffectedJobs.Count > 0)
+            {
+                RemoveStatusMessage = $"Stopping {runningAffectedJobs.Count} running job(s) using this account...";
+                foreach (var job in runningAffectedJobs)
+                {
+                    await _jobEngine.StopJobAsync(job.Config.Id);
+                }
+            }
+
+            RemoveStatusMessage = "Contacting provider to securely revoke access...";
+
+            // Revoke OAuth access
             var provider = await _providerFactory.GetOrCreateProviderAsync(SelectedAccountDetails);
             await provider.RevokeAccessAsync();
 
-            _configManager.DeleteAccount(SelectedAccountDetails.Id);
-            _uiLogger.Log(LogLevel.Info, $"Removed account '{SelectedAccountDetails.DisplayName}'.");
+            // Invalidate cache in provider factory
+            _providerFactory.InvalidateProvider(accountId);
+
+            // Delete account 
+            _configManager.DeleteAccount(accountId);
+            _uiLogger.Log(LogLevel.Info, $"Removed account '{accountName}'.");
+
+            NotifyOrphanedJobs(accountId, accountName);
 
             LoadAccountsAsync();
 
@@ -208,7 +237,7 @@ public partial class AccountsViewModel : ViewModelBase
         }
         catch (Exception ex)
         {
-            _uiLogger.Log(LogLevel.Error, $"Failed to remove account '{SelectedAccountDetails.DisplayName}': {ex.Message}");
+            _uiLogger.Log(LogLevel.Error, $"Failed to remove account '{accountName}': {ex.Message}");
             IsRemoving = false;
             HasRemoveError = true;
             RemoveStatusMessage = $"Could not contact the provider to revoke access. You might be offline.\n\nError: {ex.Message}\n\nWould you like to force-remove this account from the app locally?";
@@ -220,11 +249,35 @@ public partial class AccountsViewModel : ViewModelBase
     {
         if (SelectedAccountDetails == null) return;
 
-        _configManager.DeleteAccount(SelectedAccountDetails.Id);
-        _uiLogger.Log(LogLevel.Info, $"Force-removed local account '{SelectedAccountDetails.DisplayName}'.");
+        string accountId = SelectedAccountDetails.Id;
+        string accountName = SelectedAccountDetails.DisplayName;
+
+        _providerFactory.InvalidateProvider(accountId);
+        _configManager.DeleteAccount(accountId);
+        _uiLogger.Log(LogLevel.Info, $"Force-removed local account '{accountName}'.");
+
+        NotifyOrphanedJobs(accountId, accountName);
 
         LoadAccountsAsync();
         CloseRemoveAccount();
+    }
+
+    private void NotifyOrphanedJobs(string accountId, string accountName)
+    {
+        var orphanedJobs = _configManager.LoadAllJobs()
+            .Where(j => j.TargetAccountId == accountId)
+            .ToList();
+
+        if (orphanedJobs.Count > 0)
+        {
+            string jobNames = string.Join(", ", orphanedJobs.Select(j => $"'{j.Name}'"));
+            _notificationService.Show(
+                "Account Removed",
+                $"The job(s) {jobNames} depended on '{accountName}'. Please edit them to select a new account before running.",
+                NotificationLevel.Warning,
+                TimeSpan.FromSeconds(8)
+            );
+        }
     }
 
     [RelayCommand]
