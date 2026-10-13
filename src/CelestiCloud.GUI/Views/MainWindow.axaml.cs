@@ -15,6 +15,27 @@ public partial class MainWindow : Window
         _configManager = new ConfigManager();
     }
 
+    public void RestoreAndFocus()
+    {
+        if (!IsVisible)
+        {
+            Show();
+        }
+
+        if (WindowState == WindowState.Minimized)
+        {
+            WindowState = WindowState.Normal;
+        }
+
+        Activate();
+
+
+        // Brings window to the top across Windows and Linux window managers
+        Topmost = true;
+        Topmost = false;
+        Focus();
+    }
+
     // Forces the window to bypass the Tray intercept and exit entirely.
     public void ForceCloseAndShutdown()
     {

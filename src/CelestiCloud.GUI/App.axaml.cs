@@ -13,10 +13,13 @@ using CelestiCloud.GUI.Services;
 using CelestiCloud.GUI.ViewModels;
 using CelestiCloud.GUI.Views;
 using System;
-using System.Diagnostics;
+using System.IO;
+using System.IO.Pipes;
 using System.Linq;
 using System.Net.NetworkInformation;
+using System.Threading;
 using System.Threading.RateLimiting;
+using System.Threading.Tasks;
 
 namespace CelestiCloud.GUI;
 
@@ -25,60 +28,114 @@ public partial class App : Application
     private TrayIcon? _trayIcon;
     private MainWindow? _mainWindow;
 
+    private static Mutex? _singleInstanceMutex;
+    private readonly CancellationTokenSource _ipcServerCts = new();
+
     public override void Initialize()
     {
         AvaloniaXamlLoader.Load(this);
     }
 
-    public override async void OnFrameworkInitializationCompleted()
+    public override void OnFrameworkInitializationCompleted()
     {
         if (ApplicationLifetime is IClassicDesktopStyleApplicationLifetime desktop)
         {
-            // 1. Check for other active instances of the same process
-            var currentProcess = Process.GetCurrentProcess();
-            var runningInstances = Process.GetProcessesByName(currentProcess.ProcessName)
-                .Where(p => p.Id != currentProcess.Id)
-                .ToList();
+            // Generate unique identifiers scoped to the specific OS user account
+            string safeUser = string.Join("_", Environment.UserName.Split(Path.GetInvalidFileNameChars()));
+            string mutexName = $"CelestiCloud_Mutex_{safeUser}";
+            string pipeName = $"CelestiCloud_IPC_{safeUser}";
 
-            if (runningInstances.Count != 0)
+            bool isFirstInstance;
+            try
             {
-                // 2. Conflict detected! Show the tiny decision window first
-                var conflictWindow = new InstanceConflictWindow();
-                desktop.MainWindow = conflictWindow;
-                conflictWindow.Show();
-
-                var decision = await conflictWindow.GetDecisionAsync();
-
-                if (decision == InstanceDecision.CloseOther)
-                {
-                    // Forcefully terminate old processes
-                    foreach (var oldInstance in runningInstances)
-                    {
-                        try
-                        {
-                            oldInstance.Kill();
-                            oldInstance.WaitForExit(3000); // Wait up to 3 seconds for clean process release
-                        }
-                        catch { /* Ignore if access is denied or process already exited */ }
-                    }
-
-                    // 3. Launch the main normal app
-                    InitializeNormalApp(desktop);
-                }
-                else
-                {
-                    // Exit this instance
-                    desktop.Shutdown();
-                }
+                _singleInstanceMutex = new Mutex(true, mutexName, out isFirstInstance);
             }
-            else
+            catch (AbandonedMutexException)
             {
-                // No conflict, boot normally
-                InitializeNormalApp(desktop);
+                // Previous instance crashed without properly releasing mutex
+                isFirstInstance = true;
             }
+
+            if (!isFirstInstance)
+            {
+                // An instance already exists for this user: Signal it to restore/focus
+                SignalExistingInstance(pipeName);
+
+                // Immediately exit this secondary duplicate instance
+                Environment.Exit(0);
+                return;
+            }
+
+            // We are the primary instance: Listen for future duplicate launch attempts
+            StartIpcServer(pipeName);
+
+            // Initialize the application normally
+            InitializeNormalApp(desktop);
         }
 
         base.OnFrameworkInitializationCompleted();
+    }
+
+    // Sends an IPC message to the existing instance asking it to unminimize and focus.
+    private static void SignalExistingInstance(string pipeName)
+    {
+        try
+        {
+            using var client = new NamedPipeClientStream(
+                ".",
+                pipeName,
+                PipeDirection.Out,
+                PipeOptions.CurrentUserOnly);
+
+            // Wait up to 1 second for the server instance to respond
+            client.Connect(1000);
+
+            using var writer = new StreamWriter(client);
+            writer.WriteLine("RESTORE");
+            writer.Flush();
+        }
+        catch
+        {
+            // If the pipe connection fails (e.g., existing instance is terminating), ignore silently
+        }
+    }
+
+    // Background server listening for restore signals from secondary launch attempts.
+    private void StartIpcServer(string pipeName)
+    {
+        Task.Run(async () =>
+        {
+            while (!_ipcServerCts.Token.IsCancellationRequested)
+            {
+                try
+                {
+                    await using var server = new NamedPipeServerStream(
+                        pipeName,
+                        PipeDirection.In,
+                        1,
+                        PipeTransmissionMode.Byte,
+                        PipeOptions.Asynchronous | PipeOptions.CurrentUserOnly);
+
+                    await server.WaitForConnectionAsync(_ipcServerCts.Token);
+
+                    using var reader = new StreamReader(server);
+                    var message = await reader.ReadLineAsync();
+
+                    if (message == "RESTORE")
+                    {
+                        Dispatcher.UIThread.Post(() => _mainWindow?.RestoreAndFocus());
+                    }
+                }
+                catch (OperationCanceledException)
+                {
+                    break;
+                }
+                catch
+                {
+                    await Task.Delay(250);
+                }
+            }
+        });
     }
 
     private void InitializeNormalApp(IClassicDesktopStyleApplicationLifetime desktop)
@@ -145,7 +202,7 @@ public partial class App : Application
             jobEngine,
             uiLogger,
             notificationService);
-        
+
         CreateTrayIcon(_mainWindow, jobEngine);
 
         // Handle start minimized check (for startup folder launches)
@@ -153,7 +210,6 @@ public partial class App : Application
         if (startMinimized)
         {
             _mainWindow.WindowState = WindowState.Minimized;
-            // Wait for the window to draw, then immediately hide it to tray
             Dispatcher.UIThread.Post(() => _mainWindow.Hide(), DispatcherPriority.ApplicationIdle);
         }
         else
@@ -165,11 +221,23 @@ public partial class App : Application
 
         desktop.Exit += async (sender, args) =>
         {
-            _trayIcon?.Dispose(); // Safely removes the icon from the system taskbar on exit
+            _ipcServerCts.Cancel();
+            _ipcServerCts.Dispose();
+            _trayIcon?.Dispose();
+
+            if (_singleInstanceMutex != null)
+            {
+                try
+                {
+                    _singleInstanceMutex.ReleaseMutex();
+                }
+                catch { /* Ignore thread affinity mismatches on forced close */ }
+                _singleInstanceMutex.Dispose();
+            }
+
             await jobEngine.StopAllAsync();
         };
     }
-
 
     private void CreateTrayIcon(MainWindow window, JobEngine engine)
     {
@@ -179,23 +247,17 @@ public partial class App : Application
             ToolTipText = "CelestiCloud"
         };
 
-        // Create System Tray Context Menu
         var trayMenu = new NativeMenu();
 
         var showWindowItem = new NativeMenuItem("Show Window");
-        showWindowItem.Click += (sender, args) => Dispatcher.UIThread.Post(() =>
-        {
-            window.Show();
-            window.WindowState = WindowState.Normal;
-            window.Activate();
-        });
+        showWindowItem.Click += (sender, args) => Dispatcher.UIThread.Post(() => window.RestoreAndFocus());
 
         var exitAppItem = new NativeMenuItem("Exit Application");
         exitAppItem.Click += async (sender, args) =>
         {
-            _trayIcon?.Dispose(); // Disposes the tray icon
+            _trayIcon?.Dispose();
             await engine.StopAllAsync();
-            window.ForceCloseAndShutdown(); // Triggers native shut down
+            window.ForceCloseAndShutdown();
         };
 
         trayMenu.Add(showWindowItem);
@@ -205,12 +267,7 @@ public partial class App : Application
         _trayIcon.Menu = trayMenu;
 
         // Double-clicking the tray icon restores the window
-        _trayIcon.Clicked += (sender, args) => Dispatcher.UIThread.Post(() =>
-        {
-            window.Show();
-            window.WindowState = WindowState.Normal;
-            window.Activate();
-        });
+        _trayIcon.Clicked += (sender, args) => Dispatcher.UIThread.Post(() => window.RestoreAndFocus());
 
         TrayIcon.SetIcons(this, [_trayIcon]);
     }
