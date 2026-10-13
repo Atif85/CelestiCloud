@@ -160,7 +160,7 @@ public class ConfigManager
                 var account = JsonSerializer.Deserialize<AccountConfig>(json);
                 if (account != null)
                 {
-                    accounts.Add(account);
+                        accounts.Add(account);
                 }
             }
             catch { /* skip corrupted configs */ }
@@ -181,7 +181,36 @@ public class ConfigManager
         string tokenPath = Path.Combine(GetTokensDirectory(), accountId);
         if (Directory.Exists(tokenPath))
         {
-            Directory.Delete(tokenPath, recursive: true);
+            SafeDeleteDirectory(tokenPath);
+        }
+    }
+
+    private static void SafeDeleteDirectory(string targetDir)
+    {
+        int attempts = 3;
+        for (int i = 0; i < attempts; i++)
+        {
+            try
+            {
+                if (!Directory.Exists(targetDir)) return;
+
+                foreach (var file in Directory.GetFiles(targetDir, "*", SearchOption.AllDirectories))
+                {
+                    File.SetAttributes(file, FileAttributes.Normal);
+                }
+
+                Directory.Delete(targetDir, recursive: true);
+                return;
+            }
+            catch (IOException)
+            {
+                // Wait briefly for file handles to close
+                Thread.Sleep(150);
+            }
+            catch (UnauthorizedAccessException)
+            {
+                Thread.Sleep(150);
+            }
         }
     }
 
