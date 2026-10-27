@@ -21,18 +21,17 @@ public class ObservableUiLogger(IJobLogger fileLogger, int maxLogsInMemory = 100
         // Safely push to the GUI list on the UI Thread
         Dispatcher.UIThread.Post(() =>
         {
-            // Insert at 0 so the NEWEST logs appear at the top! (No auto-scrolling needed)
-            LiveLogs.Insert(0, new LogMessage
+            LiveLogs.Add(new LogMessage
             {
                 Timestamp = DateTime.Now,
                 Level = level,
                 Text = message
             });
 
-            // Prevent memory leaks by dropping old logs from the UI (they are still safely in the file)
+            // Prevent memory leaks by dropping old logs from the UI
             if (LiveLogs.Count > _maxLogsInMemory)
             {
-                LiveLogs.RemoveAt(LiveLogs.Count - 1);
+                LiveLogs.RemoveAt(0);
             }
         });
     }

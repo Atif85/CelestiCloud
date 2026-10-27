@@ -39,6 +39,9 @@ public partial class DashboardViewModel : ViewModelBase
     [ObservableProperty]
     private bool _isLogViewerOpen;
 
+    [ObservableProperty]
+    private bool _logAutoScroll = true;
+
     public ObservableCollection<LogMessage> LiveLogs { get; }
 
     public DashboardViewModel(ConfigManager configManager, JobEngine jobEngine, ObservableUiLogger uiLogger)
@@ -152,5 +155,11 @@ public partial class DashboardViewModel : ViewModelBase
             jobVm.IsStopping = false; // Re-enable if error occurred
             Debug.WriteLine($"Failed to stop job {jobVm.JobName}: {ex.Message}");
         }
+    }
+
+    [RelayCommand]
+    private void ClearLogs()
+    {
+        LiveLogs.Clear();
     }
 }
