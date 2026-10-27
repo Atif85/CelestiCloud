@@ -83,7 +83,7 @@
         <Border Background="#A0000000" IsVisible="{Binding IsDimmerVisible}" HorizontalAlignment="Stretch" VerticalAlignment="Stretch">
             <Grid>
                 <!-- LAYER 1A: VIEW DETAILS MODAL -->
-                <Border Width="550" MaxHeight="650"
+                <Border Width="620" MaxHeight="650"
                         HorizontalAlignment="Center" VerticalAlignment="Center"
                         Background="{DynamicResource SidebarBackgroundBrush}"
                         BorderBrush="{DynamicResource DividerBrush}" BorderThickness="1"
@@ -120,8 +120,8 @@
                         </Grid>
 
                         <!-- Scrollable Info -->
-                        <ScrollViewer Grid.Row="1" Margin="24,0,24,16">
-                            <StackPanel Spacing="16">
+                        <ScrollViewer Grid.Row="1" Margin="0,0,6,0">
+                            <StackPanel Spacing="16" Margin="24,0,24,16">
                                 <Separator Background="{DynamicResource DividerBrush}"/>
                                 
                                 <Grid ColumnDefinitions="150, *">
@@ -178,7 +178,7 @@
                                 <!-- Action Trigger Area -->
                                 <Panel Grid.Column="0" HorizontalAlignment="Left">
             
-                                    <!-- LAYER A: THE INTERACTABLE TOGGLE BUTTON (Only visible when NOT processing) -->
+                                    <!-- LAYER A: THE INTERACTABLE TOGGLE BUTTON -->
                                     <Button Command="{Binding ToggleSelectedJobStateCommand}" 
                                             IsVisible="{Binding !IsTogglingState}"
                                             Padding="16,8" CornerRadius="6" Cursor="Hand"> 
@@ -221,7 +221,7 @@
                 </Border>
 
                 <!-- LAYER 1B: JOB EDITOR MODAL -->
-                <Border Width="550" MaxHeight="650"
+                <Border Width="620" MaxHeight="650"
                         HorizontalAlignment="Center" VerticalAlignment="Center"
                         Background="{DynamicResource SidebarBackgroundBrush}"
                         BorderBrush="{DynamicResource DividerBrush}" BorderThickness="1"
@@ -243,8 +243,8 @@
                             <Separator Background="{DynamicResource DividerBrush}" Margin="0,10,0,0"/>
                         </StackPanel>
 
-                        <ScrollViewer Grid.Row="1" Margin="24,0,24,0" Padding="0,0,16,0">
-                            <StackPanel Spacing="16" DataContext="{Binding EditingJob}">
+                        <ScrollViewer Grid.Row="1" Margin="0,0,6,0" Padding="0,0,16,0">
+                            <StackPanel Spacing="16" Margin="24,0,24,16" DataContext="{Binding EditingJob}">
                                 
                                 <Grid ColumnDefinitions="*, 150">
                                     <StackPanel Grid.Column="0" Margin="0,0,10,0">
