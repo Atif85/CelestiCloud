@@ -18,6 +18,9 @@ public partial class RunningJobViewModel : ViewModelBase
     [ObservableProperty]
     private int _filesFound;
 
+    [ObservableProperty]
+    private bool _isStopping;
+
     public ObservableCollection<TransferProgressViewModel> ActiveTransfers { get; } = new();
 
     public RunningJobViewModel(JobBase job)

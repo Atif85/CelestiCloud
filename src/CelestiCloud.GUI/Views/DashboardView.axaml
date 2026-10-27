@@ -60,16 +60,61 @@
                                         Margin="0,0,0,16">
                                     <StackPanel Spacing="12">
                         
-                                        <!-- Job Title & Global Progress -->
-                                        <Grid ColumnDefinitions="*, Auto">
-                                            <TextBlock Grid.Column="0" Text="{Binding JobName}" FontSize="18" FontWeight="Bold" Foreground="{DynamicResource TextPrimaryBrush}"/>
-                                            <StackPanel Grid.Column="1" Orientation="Horizontal" Spacing="5">
-                                                <TextBlock Text="{Binding FilesProcessed}" Foreground="{DynamicResource TextPrimaryBrush}" FontWeight="Bold"/>
-                                                <TextBlock Text="/" Foreground="{DynamicResource TextSecondaryBrush}"/>
-                                                <TextBlock Text="{Binding FilesFound}" Foreground="{DynamicResource TextSecondaryBrush}"/>
-                                                <TextBlock Text="files processed" Foreground="{DynamicResource TextSecondaryBrush}"/>
-                                            </StackPanel>
-                                        </Grid>
+										<Grid ColumnDefinitions="*, Auto, Auto">
+
+											<!-- Job Name -->
+											<TextBlock Grid.Column="0"
+													   Text="{Binding JobName}"
+													   FontSize="18"
+													   FontWeight="Bold"
+													   Foreground="{DynamicResource TextPrimaryBrush}"
+													   VerticalAlignment="Center"/>
+
+											<!-- Progress Counter -->
+											<StackPanel Grid.Column="1"
+														Orientation="Horizontal"
+														Spacing="5"
+														VerticalAlignment="Center"
+														Margin="0,0,16,0">
+												<TextBlock Text="{Binding FilesProcessed}" Foreground="{DynamicResource TextPrimaryBrush}" FontWeight="Bold"/>
+												<TextBlock Text="/" Foreground="{DynamicResource TextSecondaryBrush}"/>
+												<TextBlock Text="{Binding FilesFound}" Foreground="{DynamicResource TextSecondaryBrush}"/>
+												<TextBlock Text="files processed" Foreground="{DynamicResource TextSecondaryBrush}"/>
+											</StackPanel>
+
+											<!-- Stop Button -->
+											<Button Grid.Column="2"
+													Command="{Binding $parent[UserControl].((vm:DashboardViewModel)DataContext).StopSingleJobCommand}"
+													CommandParameter="{Binding}"
+													IsEnabled="{Binding !IsStopping}"
+													CornerRadius="6"
+													Width="32"
+													Height="32"
+													Padding="0"
+													HorizontalContentAlignment="Center"
+													VerticalContentAlignment="Center"
+													ToolTip.Tip="Stop this job"
+													Cursor="Hand">
+
+												<Panel>
+													<!-- Normal State: Stop Icon -->
+													<TextBlock Text="⏹"
+															   FontSize="13"
+															   Foreground="#FF5252"
+															   HorizontalAlignment="Center"
+															   VerticalAlignment="Center"
+															   IsVisible="{Binding !IsStopping}"/>
+
+													<!-- Stopping State: Hourglass Icon -->
+													<TextBlock Text="⏳"
+															   FontSize="13"
+															   Foreground="#FFC107"
+															   HorizontalAlignment="Center"
+															   VerticalAlignment="Center"
+															   IsVisible="{Binding IsStopping}"/>
+												</Panel>
+											</Button>
+										</Grid>
                         
                                         <Separator Background="{DynamicResource DividerBrush}"/>
 

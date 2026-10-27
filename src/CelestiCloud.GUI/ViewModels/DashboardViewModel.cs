@@ -11,6 +11,7 @@ using System.Collections.ObjectModel;
 using System.Diagnostics;
 using System.IO;
 using System.Linq;
+using System.Threading.Tasks;
 
 namespace CelestiCloud.GUI.ViewModels;
 
@@ -130,6 +131,26 @@ public partial class DashboardViewModel : ViewModelBase
                 // Handle edge-case if OS lacks default file explorer mapping
                 Console.WriteLine(ex.Message);
             }
+        }
+    }
+
+    [RelayCommand]
+    private async Task StopSingleJobAsync(RunningJobViewModel? jobVm)
+    {
+        if (jobVm == null || jobVm.IsStopping) return;
+
+        jobVm.IsStopping = true;
+        await Task.Delay(150);
+
+        try
+        {
+            await _jobEngine.StopJobAsync(jobVm.JobId);
+            RefreshJobLayout(null, EventArgs.Empty);
+        }
+        catch (Exception ex)
+        {
+            jobVm.IsStopping = false; // Re-enable if error occurred
+            Debug.WriteLine($"Failed to stop job {jobVm.JobName}: {ex.Message}");
         }
     }
 }

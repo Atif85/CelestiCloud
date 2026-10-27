@@ -201,7 +201,7 @@ public partial class JobsViewModel : ViewModelBase
 
         IsTogglingState = true;
 
-        await Task.Delay(150); 
+        await Task.Delay(150);
 
         try
         {
