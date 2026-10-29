@@ -33,11 +33,11 @@
 
                 <!-- ACTIVE JOBS LIST -->
                 <ScrollViewer Grid.Row="1">
-                    <ItemsControl ItemsSource="{Binding ActiveJobsList}">
+                    <ItemsControl Classes="jobsRootList" ItemsSource="{Binding ActiveJobsList}">
                         
                         <!-- Empty State -->
                         <ItemsControl.Styles>
-                            <Style Selector="ItemsControl:empty">
+                            <Style Selector="ItemsControl.jobsRootList:empty">
                                 <Setter Property="Template">
                                     <ControlTemplate>
                                         <TextBlock Text="No jobs are currently running." 
@@ -51,24 +51,32 @@
 
                         <!-- Active Job Card -->
                         <ItemsControl.ItemTemplate>
-                            <DataTemplate x:DataType="vm:RunningJobViewModel">
-                                <Border Background="{DynamicResource SidebarBackgroundBrush}" 
-                                        BorderBrush="{DynamicResource DividerBrush}" 
-                                        BorderThickness="1" 
-                                        CornerRadius="8" 
-                                        Padding="20" 
-                                        Margin="0,0,0,16">
-                                    <StackPanel Spacing="12">
-                        
-										<Grid ColumnDefinitions="*, Auto, Auto">
+							<DataTemplate x:DataType="vm:RunningJobViewModel">
+								<Border Background="{DynamicResource SidebarBackgroundBrush}"
+										BorderBrush="{DynamicResource DividerBrush}"
+										BorderThickness="1"
+										CornerRadius="8"
+										Padding="20"
+										Margin="0,0,0,16">
+									<StackPanel Spacing="12">
 
-											<!-- Job Name -->
-											<TextBlock Grid.Column="0"
-													   Text="{Binding JobName}"
-													   FontSize="18"
-													   FontWeight="Bold"
-													   Foreground="{DynamicResource TextPrimaryBrush}"
-													   VerticalAlignment="Center"/>
+										<!-- JOB HEADER & LIVE STATUS -->
+										<Grid ColumnDefinitions="*, Auto, Auto">
+											<!-- Job Name & Live Status Subtitle -->
+											<StackPanel Grid.Column="0" VerticalAlignment="Center">
+												<TextBlock Text="{Binding JobName}"
+														   FontSize="18"
+														   FontWeight="Bold"
+														   Foreground="{DynamicResource TextPrimaryBrush}"/>
+
+												<!-- Live Status Badge -->
+												<StackPanel Orientation="Horizontal" Spacing="6" Margin="0,3,0,0">
+													<Ellipse Width="6" Height="6" Fill="#00E676" VerticalAlignment="Center"/>
+													<TextBlock Text="{Binding StatusMessage}"
+															   FontSize="12"
+															   Foreground="{DynamicResource TextSecondaryBrush}"/>
+												</StackPanel>
+											</StackPanel>
 
 											<!-- Progress Counter -->
 											<StackPanel Grid.Column="1"
@@ -95,17 +103,13 @@
 													VerticalContentAlignment="Center"
 													ToolTip.Tip="Stop this job"
 													Cursor="Hand">
-
 												<Panel>
-													<!-- Normal State: Stop Icon -->
 													<TextBlock Text="⏹"
 															   FontSize="13"
 															   Foreground="#FF5252"
 															   HorizontalAlignment="Center"
 															   VerticalAlignment="Center"
 															   IsVisible="{Binding !IsStopping}"/>
-
-													<!-- Stopping State: Hourglass Icon -->
 													<TextBlock Text="⏳"
 															   FontSize="13"
 															   Foreground="#FFC107"
@@ -115,94 +119,112 @@
 												</Panel>
 											</Button>
 										</Grid>
-                        
-                                        <Separator Background="{DynamicResource DividerBrush}"/>
 
-                                        <!-- Currently Uploading Files (Targeting UI-Friendly ActiveTransfers) -->
-                                        <ItemsControl ItemsSource="{Binding ActiveTransfers}">
-                                            <ItemsControl.Styles>
-                                                <Style Selector="ItemsControl:empty">
-                                                    <Setter Property="Template">
-                                                        <ControlTemplate>
-                                                            <TextBlock Text="No uploads are currently running." 
-                                                                       Foreground="{DynamicResource TextSecondaryBrush}"
-                                                                       HorizontalAlignment="Center"
-                                                                       VerticalAlignment="Center"
-                                                                       Margin="0,30"/>
-                                                        </ControlTemplate>
-                                                    </Setter>
-                                                </Style>
-                                            </ItemsControl.Styles>
+										<Separator Background="{DynamicResource DividerBrush}"/>
 
-                                            <ItemsControl.ItemTemplate>
-                                                <!-- Targeting TransferProgressViewModel -->
-                                                <DataTemplate x:DataType="vm:TransferProgressViewModel">
-                                                    <Grid ColumnDefinitions="*, Auto, 200, 40" Margin="0,5">
-                                                        <!-- CLICKABLE HYPERLINK FILE PATH -->
-                                                        <Button Grid.Column="0" 
-                                                                Command="{Binding OpenContainingFolderCommand}"
-                                                                Background="Transparent"
-                                                                BorderThickness="0"
-                                                                Padding="0"
-                                                                HorizontalAlignment="Left"
-                                                                VerticalAlignment="Center"
-                                                                ToolTip.Tip="Click to show in file explorer"
-                                                                Cursor="Hand"
-                                                                Margin="0,0,16,0">
-            
-                                                            <!-- Hyperlink Hover Styles -->
-                                                            <Button.Styles>
-                                                                <Style Selector="Button:pointerover /template/ ContentPresenter">
-                                                                    <Setter Property="Background" Value="Transparent" />
-                                                                </Style>
-                                                                <Style Selector="Button:pointerover TextBlock">
-                                                                    <!-- Underline and subtle highlight on hover -->
-                                                                    <Setter Property="TextDecorations" Value="Underline" />
-                                                                    <Setter Property="Foreground" Value="#00BFFF" /> 
-                                                                </Style>
-                                                            </Button.Styles>
+										<!-- ACTIVITY ROWS -->
+										<StackPanel Spacing="0" IsVisible="{Binding !IsIdle}">
 
-                                                            <TextBlock Text="{Binding FileName}" 
-                                                                       VerticalAlignment="Center" 
-                                                                       Foreground="{DynamicResource TextPrimaryBrush}" 
-                                                                       TextTrimming="CharacterEllipsis" 
-                                                                       Margin="0,0,10,0"/>
-                                                        </Button>
+											<!-- ACTIVE OPERATIONS (DELETIONS, RENAMES) -->
+											<ItemsControl ItemsSource="{Binding ActiveOperations}"
+														  IsVisible="{Binding HasActiveOperations}">
+												<ItemsControl.ItemTemplate>
+													<DataTemplate x:DataType="vm:ActiveOperationViewModel">
+														<Grid ColumnDefinitions="*, Auto, 200, 40" Margin="0,5">
+															<TextBlock Grid.Column="0"
+																	   Text="{Binding Name}"
+																	   VerticalAlignment="Center"
+																	   Foreground="{DynamicResource TextPrimaryBrush}"
+																	   TextTrimming="CharacterEllipsis"
+																	   Margin="0,0,16,0"/>
 
-                                                        <TextBlock Grid.Column="1" 
-                                                                   Text="{Binding FileSizeText}" 
-                                                                   HorizontalAlignment="Center" 
-                                                                   VerticalAlignment="Center" 
-                                                                   Foreground="{DynamicResource TextSecondaryBrush}"
-                                                                   Margin="0,0,16,0"/>
+															<Border Grid.Column="1" Grid.ColumnSpan="3"
+																	HorizontalAlignment="Right"
+																	VerticalAlignment="Center"
+																	Background="{Binding BadgeBackground}"
+																	CornerRadius="4"
+																	Padding="8,3">
+																<TextBlock Text="{Binding OperationText}"
+																		   FontSize="11"
+																		   FontWeight="Bold"
+																		   Foreground="{Binding BadgeForeground}"/>
+															</Border>
+														</Grid>
+													</DataTemplate>
+												</ItemsControl.ItemTemplate>
+											</ItemsControl>
 
-                                                        <!-- PROGRESS BAR -->
-                                                        <ProgressBar Grid.Column="2" 
-                                                                     Minimum="0" 
-                                                                     Maximum="1" 
-                                                                     Value="{Binding Progress}" 
-                                                                     Height="8" 
-                                                                     CornerRadius="4" 
-                                                                     VerticalAlignment="Center"
-                                                                     Background="{DynamicResource ProgressBarTrackBrush}"
-                                                                     Foreground="{DynamicResource ProgressBarIndicatorBrush}"
-                                                                     Margin="0,0,16,0"/>
+											<!-- CURRENTLY UPLOADING TRANSFERS -->
+											<ItemsControl ItemsSource="{Binding ActiveTransfers}"
+														  IsVisible="{Binding HasActiveTransfers}">
+												<ItemsControl.ItemTemplate>
+													<DataTemplate x:DataType="vm:TransferProgressViewModel">
+														<Grid ColumnDefinitions="*, Auto, 200, 40" Margin="0,5">
 
-        
-                                                        <!-- PERCENTAGE TEXT -->
-                                                        <TextBlock Grid.Column="3" 
-                                                                   Text="{Binding Progress, StringFormat={}{0:P0}}" 
-                                                                   HorizontalAlignment="Center" 
-                                                                   VerticalAlignment="Center" 
-                                                                   Foreground="{DynamicResource TextSecondaryBrush}"/>
-                                                    </Grid>
-                                                </DataTemplate>
-                                            </ItemsControl.ItemTemplate>
-                                        </ItemsControl>
+															<Button Grid.Column="0"
+																	Command="{Binding OpenContainingFolderCommand}"
+																	Background="Transparent"
+																	BorderThickness="0"
+																	Padding="0"
+																	HorizontalAlignment="Left"
+																	VerticalAlignment="Center"
+																	ToolTip.Tip="Click to show in file explorer"
+																	Cursor="Hand"
+																	Margin="0,0,16,0">
+																<Button.Styles>
+																	<Style Selector="Button:pointerover /template/ ContentPresenter">
+																		<Setter Property="Background" Value="Transparent" />
+																	</Style>
+																	<Style Selector="Button:pointerover TextBlock">
+																		<Setter Property="TextDecorations" Value="Underline" />
+																		<Setter Property="Foreground" Value="#00BFFF" />
+																	</Style>
+																</Button.Styles>
 
-                                    </StackPanel>
-                                </Border>
-                            </DataTemplate>
+																<TextBlock Text="{Binding FileName}"
+																		   VerticalAlignment="Center"
+																		   Foreground="{DynamicResource TextPrimaryBrush}"
+																		   TextTrimming="CharacterEllipsis"/>
+															</Button>
+
+															<TextBlock Grid.Column="1"
+																	   Text="{Binding FileSizeText}"
+																	   HorizontalAlignment="Center"
+																	   VerticalAlignment="Center"
+																	   Foreground="{DynamicResource TextSecondaryBrush}"
+																	   Margin="0,0,16,0"/>
+
+															<ProgressBar Grid.Column="2"
+																		 Minimum="0" Maximum="1"
+																		 Value="{Binding Progress}"
+																		 Height="8"
+																		 CornerRadius="4"
+																		 VerticalAlignment="Center"
+																		 Background="{DynamicResource ProgressBarTrackBrush}"
+																		 Foreground="{DynamicResource ProgressBarIndicatorBrush}"
+																		 Margin="0,0,16,0"/>
+
+															<TextBlock Grid.Column="3"
+																	   Text="{Binding Progress, StringFormat={}{0:P0}}"
+																	   HorizontalAlignment="Center"
+																	   VerticalAlignment="Center"
+																	   Foreground="{DynamicResource TextSecondaryBrush}"/>
+														</Grid>
+													</DataTemplate>
+												</ItemsControl.ItemTemplate>
+											</ItemsControl>
+										</StackPanel>
+
+										<!-- IDLE PLACEHOLDER (only when nothing at all is happening) -->
+										<TextBlock Text="No active transfers."
+												   Foreground="{DynamicResource TextSecondaryBrush}"
+												   HorizontalAlignment="Center"
+												   Margin="0,15"
+												   IsVisible="{Binding IsIdle}"/>
+
+									</StackPanel>
+								</Border>
+							</DataTemplate>
                         </ItemsControl.ItemTemplate>
                     </ItemsControl>
                 </ScrollViewer>

@@ -19,9 +19,23 @@ public partial class RunningJobViewModel : ViewModelBase
     private int _filesFound;
 
     [ObservableProperty]
+    private string _statusMessage = "Starting...";
+
+    [ObservableProperty]
     private bool _isStopping;
 
-    public ObservableCollection<TransferProgressViewModel> ActiveTransfers { get; } = new();
+    [ObservableProperty]
+    [NotifyPropertyChangedFor(nameof(IsIdle))]
+    private bool _hasActiveOperations;
+
+    [ObservableProperty]
+    [NotifyPropertyChangedFor(nameof(IsIdle))]
+    private bool _hasActiveTransfers;
+
+    public bool IsIdle => !HasActiveOperations && !HasActiveTransfers;
+
+    public ObservableCollection<TransferProgressViewModel> ActiveTransfers { get; } = [];
+    public ObservableCollection<ActiveOperationViewModel> ActiveOperations { get; } = [];
 
     public RunningJobViewModel(JobBase job)
     {
@@ -37,7 +51,36 @@ public partial class RunningJobViewModel : ViewModelBase
     {
         FilesProcessed = job.State.FilesProcessed;
         FilesFound = job.State.FilesFound;
+        StatusMessage = job.State.CurrentStatus;
 
+        // Sync Active Operations (Deletions / Renames)
+        var currentOps = job.State.ActiveOperations.ToList();
+
+        for (int i = ActiveOperations.Count - 1; i >= 0; i--)
+        {
+            var existing = ActiveOperations[i];
+            if (!currentOps.Any(op => op.Key == existing.Name))
+            {
+                ActiveOperations.RemoveAt(i);
+            }
+        }
+
+        foreach (var op in currentOps)
+        {
+            var existing = ActiveOperations.FirstOrDefault(o => o.Name == op.Key);
+            if (existing == null)
+            {
+                ActiveOperations.Add(new ActiveOperationViewModel(op.Key, op.Value));
+            }
+            else
+            {
+                existing.OperationText = op.Value;
+            }
+        }
+
+        HasActiveOperations = ActiveOperations.Count > 0;
+
+        // Sync Active Upload Transfers
         var currentTransfers = job.State.ActiveTransfers.ToList();
 
         for (int i = ActiveTransfers.Count - 1; i >= 0; i--)
@@ -74,5 +117,7 @@ public partial class RunningJobViewModel : ViewModelBase
                 existing.Progress = transfer.Value;
             }
         }
+
+        HasActiveTransfers = ActiveTransfers.Count > 0;
     }
 }

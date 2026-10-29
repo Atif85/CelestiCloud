@@ -5,20 +5,20 @@ using System.Collections.ObjectModel;
 
 namespace CelestiCloud.GUI.Logging;
 
-public class ObservableUiLogger(IJobLogger fileLogger, int maxLogsInMemory = 1000) : IJobLogger
+public class ObservableUiLogger(IJobLogger fileLogger, int maxLogsInMemory = 2500, int trimCount = 1000) : IJobLogger
 {
     private readonly IJobLogger _fileLogger = fileLogger;
     private readonly int _maxLogsInMemory = maxLogsInMemory;
+    private readonly int _trimCount = trimCount;
 
-    // The UI will bind directly to this collection
-    public ObservableCollection<LogMessage> LiveLogs { get; } = [];
+    public RangeObservableCollection<LogMessage> LiveLogs { get; } = [];
 
     public void Log(LogLevel level, string message)
     {
         // Write to the physical file using your FileLogger
         _fileLogger.Log(level, message);
 
-        // Safely push to the GUI list on the UI Thread
+        // Push to the GUI list on the UI Thread
         Dispatcher.UIThread.Post(() =>
         {
             LiveLogs.Add(new LogMessage
@@ -31,7 +31,7 @@ public class ObservableUiLogger(IJobLogger fileLogger, int maxLogsInMemory = 100
             // Prevent memory leaks by dropping old logs from the UI
             if (LiveLogs.Count > _maxLogsInMemory)
             {
-                LiveLogs.RemoveAt(0);
+                LiveLogs.RemoveFirst(_trimCount);
             }
         });
     }

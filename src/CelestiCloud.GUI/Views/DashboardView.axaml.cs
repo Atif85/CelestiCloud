@@ -1,4 +1,5 @@
-﻿using Avalonia.Controls;
+﻿using Avalonia;
+using Avalonia.Controls;
 using Avalonia.Threading;
 using CelestiCloud.GUI.ViewModels;
 using System;
@@ -8,6 +9,8 @@ namespace CelestiCloud.GUI.Views;
 
 public partial class DashboardView : UserControl
 {
+    private DashboardViewModel? _vm;
+
     public DashboardView()
     {
         InitializeComponent();
@@ -17,21 +20,42 @@ public partial class DashboardView : UserControl
     {
         base.OnDataContextChanged(e);
 
-        if (DataContext is DashboardViewModel vm)
-        {
-            vm.LiveLogs.CollectionChanged += OnLogsCollectionChanged;
-        }
+        _vm?.LiveLogs.CollectionChanged -= OnLogsCollectionChanged;
+
+        _vm = DataContext as DashboardViewModel;
+
+        _vm?.LiveLogs.CollectionChanged += OnLogsCollectionChanged;
     }
 
     private void OnLogsCollectionChanged(object? sender, NotifyCollectionChangedEventArgs e)
     {
-        // Only scroll if AutoScroll is checked and the modal is actually open
-        if (DataContext is DashboardViewModel { LogAutoScroll: true, IsLogViewerOpen: true })
+        if (_vm is null || !_vm.IsLogViewerOpen)
+            return;
+
+        // Autoscroll ON: follow the newest log
+        if (_vm.LogAutoScroll)
         {
+            Dispatcher.UIThread.Post(() => LogsScrollViewer.ScrollToEnd(), DispatcherPriority.Background);
+            return;
+        }
+
+        // Autoscroll OFF: when old logs are trimmed from the top, shift the
+        // offset up by the removed height so the lines being read stay put.
+        if (e.Action == NotifyCollectionChangedAction.Remove)
+        {
+            var oldExtent = LogsScrollViewer.Extent.Height;
+            var oldOffset = LogsScrollViewer.Offset.Y;
+
             Dispatcher.UIThread.Post(() =>
             {
-               LogsScrollViewer.ScrollToEnd();
-            }, DispatcherPriority.Background);
+                var removedHeight = oldExtent - LogsScrollViewer.Extent.Height;
+                if (removedHeight > 0)
+                {
+                    LogsScrollViewer.Offset = new Vector(
+                        LogsScrollViewer.Offset.X,
+                        Math.Max(0, oldOffset - removedHeight));
+                }
+            }, DispatcherPriority.Loaded);
         }
     }
 }
