@@ -40,4 +40,15 @@
         <ApplicationIcon>Assets\icon.ico</ApplicationIcon>
     </PropertyGroup>
 
+	<PropertyGroup>
+		<PublishTrimmed>true</PublishTrimmed>
+		<TrimMode>partial</TrimMode>
+		<SatelliteResourceLanguages>en</SatelliteResourceLanguages>
+		<InvariantGlobalization>true</InvariantGlobalization>
+		<EventSourceSupport>false</EventSourceSupport>
+		<MetadataUpdaterSupport>false</MetadataUpdaterSupport>
+		<DebugType>none</DebugType>
+		<DebugSymbols>false</DebugSymbols>
+	</PropertyGroup>
+
 </Project>

@@ -45,7 +45,7 @@ public class ConfigManager
         try
         {
             string json = File.ReadAllText(filePath);
-            return JsonSerializer.Deserialize<JobConfig>(json);
+            return JsonSerializer.Deserialize(json, CelestiJsonContext.Default.JobConfig);
         }
         catch
         {
@@ -73,7 +73,7 @@ public class ConfigManager
             try
             {
                 string json = File.ReadAllText(file);
-                var job = JsonSerializer.Deserialize<JobConfig>(json);
+                var job = JsonSerializer.Deserialize(json, CelestiJsonContext.Default.JobConfig);
                 if (job != null)
                 {
                     jobs.Add(job);
@@ -94,7 +94,7 @@ public class ConfigManager
             throw new ArgumentException("Job ID cannot be empty.", nameof(job));
 
         string filePath = Path.Combine(_jobsDirectory, $"{job.Id}.json");
-        string json = JsonSerializer.Serialize(job, _options);
+        string json = JsonSerializer.Serialize(job, CelestiJsonContext.Default.JobConfig);
 
         File.WriteAllText(filePath, json);
         JobSaved?.Invoke(job);
@@ -129,7 +129,7 @@ public class ConfigManager
         try
         {
             string json = File.ReadAllText(filePath);
-            return JsonSerializer.Deserialize<AccountConfig>(json);
+            return JsonSerializer.Deserialize(json, CelestiJsonContext.Default.AccountConfig);
         }
         catch
         {
@@ -154,7 +154,7 @@ public class ConfigManager
             try
             {
                 string json = File.ReadAllText(file);
-                var account = JsonSerializer.Deserialize<AccountConfig>(json);
+                var account = JsonSerializer.Deserialize(json, CelestiJsonContext.Default.AccountConfig);
                 if (account != null)
                 {
                         accounts.Add(account);
@@ -172,7 +172,7 @@ public class ConfigManager
             throw new ArgumentException("Account ID cannot be empty.", nameof(account));
 
         string filePath = Path.Combine(_accountsDirectory, $"{account.Id}.json");
-        string json = JsonSerializer.Serialize(account, _options);
+        string json = JsonSerializer.Serialize(account, CelestiJsonContext.Default.AccountConfig);
 
         File.WriteAllText(filePath, json);
 
@@ -237,7 +237,7 @@ public class ConfigManager
         try
         {
             string json = File.ReadAllText(filePath);
-            return JsonSerializer.Deserialize<AppSettings>(json) ?? new AppSettings();
+            return JsonSerializer.Deserialize(json, CelestiJsonContext.Default.AppSettings) ?? new AppSettings();
         }
         catch
         {
@@ -248,7 +248,7 @@ public class ConfigManager
     public void SaveSettings(AppSettings settings)
     {
         string filePath = Path.Combine(_appDataPath, "settings.json");
-        File.WriteAllText(filePath, JsonSerializer.Serialize(settings, _options));
+        File.WriteAllText(filePath, JsonSerializer.Serialize(settings, CelestiJsonContext.Default.AppSettings));
     }
     #endregion
 }
